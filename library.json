@@ -1,0 +1,45 @@
+{
+  "name": "DualGNSS",
+  "version": "0.0.0",
+  "description": "CASIC and u-blox M6-M10 GNSS library for ESP32 with auto-baud detection and CRSF payload output.",
+  "keywords": [
+    "gnss",
+    "gps",
+    "ublox",
+    "u-blox",
+    "casic",
+    "esp32",
+    "crsf",
+    "elrs",
+    "navigation"
+  ],
+  "homepage": "https://github.com/Cyberslug/DualGNSS",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cyberslug/DualGNSS.git"
+  },
+  "license": "GPL V3",
+  "authors": [
+    {
+      "name": "D.Gamble (Github: Cyberslug)",
+      "maintainer": true
+    }
+  ],
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "build": {
+    "srcDir": "src"
+  },
+  "examples": [
+    {
+      "name": "UbxFullSetup",
+      "base": "examples/UbxFullSetup",
+      "files": ["UbxFullSetup.ino"]
+    },
+    {
+      "name": "CasicFullSetup",
+      "base": "examples/CasicFullSetup",
+      "files": ["CasicFullSetup.ino"]
+    }
+  ]
+}

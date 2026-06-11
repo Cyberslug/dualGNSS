@@ -1,0 +1,40 @@
+#######################################
+# DualGNSS — Syntax Coloring Map
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1 — orange)
+#######################################
+
+UbxGNSS	KEYWORD1
+CasicGNSS	KEYWORD1
+GpsProvider	KEYWORD1
+CrsfGpsPayload	KEYWORD1
+UbxConfigResult	KEYWORD1
+CasicConfigResult	KEYWORD1
+UbxConfigStatus	KEYWORD1
+CasicConfigStatus	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2 — brown)
+#######################################
+
+begin	KEYWORD2
+beginPassive	KEYWORD2
+update	KEYWORD2
+hasNewData	KEYWORD2
+isFixValid	KEYWORD2
+getPayload	KEYWORD2
+isConfigured	KEYWORD2
+getDetectedProvider	KEYWORD2
+ubxConfigResult	KEYWORD2
+casicConfigResult	KEYWORD2
+
+#######################################
+# Constants (LITERAL1 — teal)
+#######################################
+
+UBX_M6_MINUS	LITERAL1
+UBX_M7_M8	LITERAL1
+UBX_M9_PLUS	LITERAL1
+UNKNOWN	LITERAL1
