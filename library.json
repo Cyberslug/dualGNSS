@@ -1,6 +1,6 @@
 {
-  "name": "DualGNSS",
-  "version": "0.0.0",
+  "name": "dualGNSS",
+  "version": "0.1.0",
   "description": "CASIC and u-blox M6-M10 GNSS library for ESP32 with auto-baud detection and CRSF payload output.",
   "keywords": [
     "gnss",
@@ -13,10 +13,10 @@
     "elrs",
     "navigation"
   ],
-  "homepage": "https://github.com/Cyberslug/DualGNSS",
+  "homepage": "https://github.com/Cyberslug/dualGNSS",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Cyberslug/DualGNSS.git"
+    "url": "https://github.com/Cyberslug/dualGNSS.git"
   },
   "license": "GPL V3",
   "authors": [

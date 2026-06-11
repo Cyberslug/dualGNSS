@@ -1,4 +1,4 @@
-/* DualGNSS
+/* dualGNSS
 * Copyright (C) 2026  D. Gamble (Github: Cyberslug)
 *
 * This program is free software: you can redistribute it and/or modify

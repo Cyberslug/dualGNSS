@@ -1,4 +1,4 @@
-# DualGNSS
+# dualGNSS
 
 Arduino library for **CASIC** and **u-blox M6–M10** GNSS modules on ESP32.
 Provides auto-baud detection, complete module configuration, and binary
