@@ -102,24 +102,25 @@ private:
 
   /**
    * @brief Dispatches a verified CASIC frame to the appropriate payload processor.
-   * @details A static_assert verifies at compile time that CASIC_NAVPV_PAYLOAD_LEN
-   *          is a multiple of 4, which is required for the word-based checksum
-   *          accumulation.  Only NAV-PV frames of the correct class, ID, and
-   *          declared length are processed; all others are silently discarded.
+   * @details Only NAV-class frames of the correct class, ID, and declared length
+   *          are processed; all others are silently discarded.  Currently handles:
+   *            NAV-PV       (0x01 0x03, 80 bytes) — position, velocity, status
+   *            NAV-TIMEUTC  (0x01 0x10, 24 bytes) — UTC date and time
    */
   void onFrame();
 
   /**
-   * @brief Processes a NAV-PV payload and populates all CrsfGpsPayload fields.
-   * @details A valid 3-D fix is indicated by posValid >= CASIC_POSVALID_MIN_3D.
-   *          Latitude and longitude are read as R8 (double, degrees) and scaled
-   *          to 1e-7 integer units for CRSF.  MSL altitude is derived as
-   *          (height - sepGeoid); see the sign-convention note in the
-   *          implementation for firmware variants with opposite geoid sign.
-   *          Ground speed is converted from m/s to hundredths of km/h (× 360).
-   *          Heading is normalised to [0°, 360°) before scaling to hundredths.
+   * @brief Processes a NAV-PV payload; populates position, velocity, and status fields.
    */
   void processNavPv();
+
+  /**
+   * @brief Processes a NAV-TIMEUTC payload; updates UTC time fields in GnssData.
+   * @details Called independently of processNavPv(); does not set m_newData.
+   *          Sets GNSS_FLAG_DATE_VALID and/or GNSS_FLAG_TIME_VALID in validFlags
+   *          based on the dateValid and valid fields in the payload.
+   */
+  void processNavTimeUtc();
 
   // -------------------------------------------------------------------------
   // CASIC frame state

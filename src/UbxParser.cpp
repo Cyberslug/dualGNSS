@@ -42,10 +42,20 @@ UbxParser::UbxParser()
   , m_m6AssembleItow(0U)
   , m_m6Lon(0)
   , m_m6Lat(0)
+  , m_m6Height(0)
   , m_m6Hmsl(0)
+  , m_m6HAcc(0U)
+  , m_m6VAcc(0U)
+  , m_m6VelN(0)
+  , m_m6VelE(0)
+  , m_m6VelD(0)
   , m_m6GSpeed(0U)
   , m_m6Heading(0)
+  , m_m6SAcc(0U)
+  , m_m6CAcc(0U)
   , m_m6NumSv(0U)
+  , m_m6FixType(0U)
+  , m_m6PDop(0U)
   , m_m6FixValid(false)
 {
 }
@@ -84,10 +94,20 @@ void UbxParser::resetState()
   m_m6AssembleItow = 0U;
   m_m6Lon          = 0;
   m_m6Lat          = 0;
+  m_m6Height       = 0;
   m_m6Hmsl         = 0;
+  m_m6HAcc         = 0U;
+  m_m6VAcc         = 0U;
+  m_m6VelN         = 0;
+  m_m6VelE         = 0;
+  m_m6VelD         = 0;
   m_m6GSpeed       = 0U;
   m_m6Heading      = 0;
+  m_m6SAcc         = 0U;
+  m_m6CAcc         = 0U;
   m_m6NumSv        = 0U;
+  m_m6FixType      = 0U;
+  m_m6PDop         = 0U;
   m_m6FixValid     = false;
 
   resetCommonState();
@@ -274,6 +294,12 @@ void UbxParser::onFrame()
         }
         break;
 
+      case UBX_ID_NAV_TIMEUTC:
+        if (m_payloadLen == UBX_NAVTIMEUTC_PAYLOAD_LEN) {
+          processM6TimeUtc();
+        }
+        break;
+
       default:
         break;
     }
@@ -286,14 +312,17 @@ void UbxParser::onFrame()
 
 /**
  * @brief Processes a NAV-PVT payload for M7 / M8 / M9 / M10 modules.
- * @details A fix is considered valid when the gnssFixOK flag (bit 0 of the
- *          flags byte) is set and fixType equals 3 (3-D fix).  Ground speed
- *          is converted from mm/s to hundredths of km/h (× 36 / 100).
- *          Altitude is converted from mm above MSL to metres, then the CRSF
- *          +1000 m offset is applied.
+ * @details Reads the complete set of usable fields from the 92-byte payload.
+ *          Fix validity: gnssFixOK && fixType == 3 (3-D).
+ *          Time fields: year…millisecond populated from the UTC time group
+ *          (offsets 4–16); DATE_VALID and TIME_VALID flags set from the valid
+ *          byte (offset 11 bits 0 and 1).  Millisecond derived from nano (I4 ns)
+ *          by integer division; clamped to [0, 999].
+ *          All other fields stored in natural GnssData units.
  */
 void UbxParser::processM7Pvt()
 {
+  // Fix status
   uint8_t fixType = 0U;
   uint8_t flags   = 0U;
   uint8_t numSv   = 0U;
@@ -301,34 +330,92 @@ void UbxParser::processM7Pvt()
   readU1(m_buf, UBX_PVT_OFF_FLAGS,   flags);
   readU1(m_buf, UBX_PVT_OFF_NUMSV,   numSv);
 
-  m_fixValid = ((flags & UBX_FLAG_GNSSOK) != 0U) && (fixType == UBX_FIXTYPE_3D);
+  const bool fixOk = ((flags & UBX_FLAG_GNSSOK) != 0U) && (fixType == UBX_FIXTYPE_3D);
+  m_payload.fixType    = fixType;
+  m_payload.validFlags = fixOk
+      ? static_cast<uint8_t>(GNSS_FLAG_FIX_OK | GNSS_FLAG_VEL_VALID)
+      : 0U;
 
-  int32_t lon     = 0;
-  int32_t lat     = 0;
-  int32_t hmsl    = 0;
-  int32_t gSpeed  = 0;
-  int32_t headMot = 0;
-  readI4(m_buf, UBX_PVT_OFF_LON,     lon);
-  readI4(m_buf, UBX_PVT_OFF_LAT,     lat);
-  readI4(m_buf, UBX_PVT_OFF_HMSL,    hmsl);
-  readI4(m_buf, UBX_PVT_OFF_GSPEED,  gSpeed);
+  // UTC time fields (offsets 4–16)
+  uint16_t year  = 0U;
+  uint8_t  month = 0U, day = 0U, hour = 0U, min = 0U, sec = 0U, valid = 0U;
+  int32_t  nano  = 0;
+  readU2(m_buf, UBX_PVT_OFF_YEAR,  year);
+  readU1(m_buf, UBX_PVT_OFF_MONTH, month);
+  readU1(m_buf, UBX_PVT_OFF_DAY,   day);
+  readU1(m_buf, UBX_PVT_OFF_HOUR,  hour);
+  readU1(m_buf, UBX_PVT_OFF_MIN,   min);
+  readU1(m_buf, UBX_PVT_OFF_SEC,   sec);
+  readU1(m_buf, UBX_PVT_OFF_VALID, valid);
+  readI4(m_buf, UBX_PVT_OFF_NANO,  nano);
+
+  m_payload.year        = year;
+  m_payload.month       = month;
+  m_payload.day         = day;
+  m_payload.hour        = hour;
+  m_payload.minute      = min;
+  m_payload.second      = sec;
+  // Millisecond: nano is the nanosecond remainder of the UTC second, range ±1e9.
+  // Clamp to [0, 999] — negative nano means the reported second hasn't started yet.
+  m_payload.millisecond = (nano >= 0)
+      ? static_cast<uint16_t>(static_cast<uint32_t>(nano) / 1000000U)
+      : 0U;
+
+  // Accumulate date/time validity into validFlags
+  if ((valid & 0x01U) != 0U) { m_payload.validFlags |= GNSS_FLAG_DATE_VALID; }
+  if ((valid & 0x02U) != 0U) { m_payload.validFlags |= GNSS_FLAG_TIME_VALID; }
+
+  // Position fields
+  int32_t lon    = 0;
+  int32_t lat    = 0;
+  int32_t height = 0;
+  int32_t hmsl   = 0;
+  readI4(m_buf, UBX_PVT_OFF_LON,    lon);
+  readI4(m_buf, UBX_PVT_OFF_LAT,    lat);
+  readI4(m_buf, UBX_PVT_OFF_HEIGHT, height);
+  readI4(m_buf, UBX_PVT_OFF_HMSL,   hmsl);
+
+  // Position accuracy fields
+  uint32_t hAcc = 0U;
+  uint32_t vAcc = 0U;
+  readU4(m_buf, UBX_PVT_OFF_HACC, hAcc);
+  readU4(m_buf, UBX_PVT_OFF_VACC, vAcc);
+
+  // NED velocity fields
+  int32_t velN   = 0;
+  int32_t velE   = 0;
+  int32_t velD   = 0;
+  int32_t gSpeed = 0;
+  readI4(m_buf, UBX_PVT_OFF_VELN,   velN);
+  readI4(m_buf, UBX_PVT_OFF_VELE,   velE);
+  readI4(m_buf, UBX_PVT_OFF_VELD,   velD);
+  readI4(m_buf, UBX_PVT_OFF_GSPEED, gSpeed);
+
+  // Heading and accuracy fields
+  int32_t  headMot = 0;
+  uint32_t sAcc    = 0U;
+  uint32_t headAcc = 0U;
+  uint16_t pDop    = 0U;
   readI4(m_buf, UBX_PVT_OFF_HEADMOT, headMot);
+  readU4(m_buf, UBX_PVT_OFF_SACC,    sAcc);
+  readU4(m_buf, UBX_PVT_OFF_HEADACC, headAcc);
+  readU2(m_buf, UBX_PVT_OFF_PDOP,    pDop);
 
-  m_payload.latitude  = lat;
-  m_payload.longitude = lon;
-
-  // hMSL is in mm; divide by 1000 to get metres, then add CRSF offset.
-  m_payload.altitude = clampAltU16(
-      (hmsl / static_cast<int32_t>(1000)) + CRSF_ALT_OFFSET_M);
-
-  // gSpeed is I4, mm/s (always >= 0 per spec); mm/s → hundredths of km/h: ×36/100.
-  m_payload.groundspeed = static_cast<uint16_t>(
-      static_cast<uint32_t>(gSpeed) * 36U / 100U);
-
-  // headMot: I4, 1e-5 °; normalise to [0, 36 000 000) then express in hundredths.
-  m_payload.heading = normaliseHeading1e5(headMot);
-
-  m_payload.satellites = numSv;
+  m_payload.latitude      = lat;
+  m_payload.longitude     = lon;
+  m_payload.altMSL        = hmsl;
+  m_payload.altEllipsoid  = height;
+  m_payload.hAcc          = hAcc;
+  m_payload.vAcc          = vAcc;
+  m_payload.velN          = velN;
+  m_payload.velE          = velE;
+  m_payload.velD          = velD;
+  m_payload.gSpeed        = gSpeed;
+  m_payload.headMot       = normaliseHeadingRaw1e5(headMot);
+  m_payload.sAcc          = sAcc;
+  m_payload.headAcc       = headAcc;
+  m_payload.pDOP          = pDop;
+  m_payload.satellites    = numSv;
   m_newData = true;
 }
 
@@ -358,7 +445,7 @@ void UbxParser::advanceM6Epoch(uint32_t itow)
 // ---------------------------------------------------------------------------
 
 /**
- * @brief Processes a NAV-POSLLH payload, storing position fields for epoch assembly.
+ * @brief Processes a NAV-POSLLH payload, storing position and accuracy fields.
  * @details Sets M6_FLAG_POSLLH and calls assembleM6Solution() if all three epoch
  *          messages have now arrived.
  */
@@ -368,9 +455,12 @@ void UbxParser::processM6Posllh()
   readU4(m_buf, UBX_POSLLH_OFF_ITOW, itow);
   advanceM6Epoch(itow);
 
-  readI4(m_buf, UBX_POSLLH_OFF_LON,  m_m6Lon);
-  readI4(m_buf, UBX_POSLLH_OFF_LAT,  m_m6Lat);
-  readI4(m_buf, UBX_POSLLH_OFF_HMSL, m_m6Hmsl);
+  readI4(m_buf, UBX_POSLLH_OFF_LON,    m_m6Lon);
+  readI4(m_buf, UBX_POSLLH_OFF_LAT,    m_m6Lat);
+  readI4(m_buf, UBX_POSLLH_OFF_HEIGHT, m_m6Height);  // mm above WGS84 ellipsoid
+  readI4(m_buf, UBX_POSLLH_OFF_HMSL,   m_m6Hmsl);   // mm above MSL
+  readU4(m_buf, UBX_POSLLH_OFF_HACC,   m_m6HAcc);   // mm
+  readU4(m_buf, UBX_POSLLH_OFF_VACC,   m_m6VAcc);   // mm
   m_m6Flags |= M6_FLAG_POSLLH;
 
   if (m_m6Flags == M6_FLAGS_ALL) {
@@ -386,7 +476,7 @@ void UbxParser::processM6Posllh()
 // ---------------------------------------------------------------------------
 
 /**
- * @brief Processes a NAV-SOL payload, storing fix validity and satellite count.
+ * @brief Processes a NAV-SOL payload, storing fix validity, pDOP, and satellite count.
  * @details Sets M6_FLAG_SOL and calls assembleM6Solution() if all three epoch
  *          messages have now arrived.
  */
@@ -402,9 +492,11 @@ void UbxParser::processM6Sol()
 
   readU1(m_buf, UBX_SOL_OFF_GPSFIXTYPE, gpsFix);
   readU1(m_buf, UBX_SOL_OFF_FLAGS,      flags);
+  readU2(m_buf, UBX_SOL_OFF_PDOP,       m_m6PDop);  // U2, dimensionless × 100
   readU1(m_buf, UBX_SOL_OFF_NUMSV,      numSv);
 
   m_m6FixValid = ((flags & UBX_FLAG_GNSSOK) != 0U) && (gpsFix == UBX_FIXTYPE_3D);
+  m_m6FixType  = gpsFix;
   m_m6NumSv    = numSv;
   m_m6Flags   |= M6_FLAG_SOL;
 
@@ -418,25 +510,25 @@ void UbxParser::processM6Sol()
 // ---------------------------------------------------------------------------
 
 /**
- * @brief Processes a NAV-VELNED payload, storing ground speed and heading.
- * @details Sets M6_FLAG_VELNED and calls assembleM6Solution() if all three
- *          epoch messages have now arrived.
+ * @brief Processes a NAV-VELNED payload, storing NED velocities, speed, heading,
+ *        and accuracy fields.
+ * @details Sets M6_FLAG_VELNED and calls assembleM6Solution() if all three epoch
+ *          messages have now arrived.
  */
 void UbxParser::processM6Velned()
 {
-  uint32_t itow    = 0U;
-  uint32_t gSpeed  = 0U;
-  int32_t  heading = 0;
-
-  readU4(m_buf, UBX_VELNED_OFF_ITOW,    itow);
+  uint32_t itow = 0U;
+  readU4(m_buf, UBX_VELNED_OFF_ITOW, itow);
   advanceM6Epoch(itow);
 
-  readU4(m_buf, UBX_VELNED_OFF_GSPEED,  gSpeed);
-  readI4(m_buf, UBX_VELNED_OFF_HEADING, heading);
-
-  m_m6GSpeed  = gSpeed;
-  m_m6Heading = heading;
-  m_m6Flags  |= M6_FLAG_VELNED;
+  readI4(m_buf, UBX_VELNED_OFF_VELN,    m_m6VelN);    // I4, cm/s north (signed)
+  readI4(m_buf, UBX_VELNED_OFF_VELE,    m_m6VelE);    // I4, cm/s east  (signed)
+  readI4(m_buf, UBX_VELNED_OFF_VELD,    m_m6VelD);    // I4, cm/s down  (signed)
+  readU4(m_buf, UBX_VELNED_OFF_GSPEED,  m_m6GSpeed);  // U4, cm/s 2-D ground speed
+  readI4(m_buf, UBX_VELNED_OFF_HEADING, m_m6Heading); // I4, 1e-5 °
+  readU4(m_buf, UBX_VELNED_OFF_SACC,    m_m6SAcc);    // U4, cm/s
+  readU4(m_buf, UBX_VELNED_OFF_CACC,    m_m6CAcc);    // U4, 1e-5 °
+  m_m6Flags |= M6_FLAG_VELNED;
 
   if (m_m6Flags == M6_FLAGS_ALL) {
     assembleM6Solution();
@@ -444,36 +536,108 @@ void UbxParser::processM6Velned()
 }
 
 // ---------------------------------------------------------------------------
-// UBX M6- — epoch assembly
+// UBX M6- — NAV-TIMEUTC
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Processes a NAV-TIMEUTC payload, updating UTC time fields in GnssData.
+ * @details Decoupled from the epoch gate — called whenever a NAV-TIMEUTC frame
+ *          arrives, regardless of whether POSLLH/SOL/VELNED have been received.
+ *          Does not set m_newData.  Sets GNSS_FLAG_DATE_VALID and
+ *          GNSS_FLAG_TIME_VALID in validFlags when bit 2 (validUTC) of the valid
+ *          byte is set; preserves all other validFlags bits.
+ */
+void UbxParser::processM6TimeUtc()
+{
+  uint16_t year  = 0U;
+  uint8_t  month = 0U, day = 0U, hour = 0U, min = 0U, sec = 0U, valid = 0U;
+  int32_t  nano  = 0;
+
+  readU2(m_buf, UBX_TIMEUTC_OFF_YEAR,  year);
+  readU1(m_buf, UBX_TIMEUTC_OFF_MONTH, month);
+  readU1(m_buf, UBX_TIMEUTC_OFF_DAY,   day);
+  readU1(m_buf, UBX_TIMEUTC_OFF_HOUR,  hour);
+  readU1(m_buf, UBX_TIMEUTC_OFF_MIN,   min);
+  readU1(m_buf, UBX_TIMEUTC_OFF_SEC,   sec);
+  readU1(m_buf, UBX_TIMEUTC_OFF_VALID, valid);
+  readI4(m_buf, UBX_TIMEUTC_OFF_NANO,  nano);
+
+  m_payload.year        = year;
+  m_payload.month       = month;
+  m_payload.day         = day;
+  m_payload.hour        = hour;
+  m_payload.minute      = min;
+  m_payload.second      = sec;
+  // Millisecond from nanosecond fraction; clamped to zero if nano is negative.
+  m_payload.millisecond = (nano >= 0)
+      ? static_cast<uint16_t>(static_cast<uint32_t>(nano) / 1000000U)
+      : 0U;
+
+  // Update time flags without disturbing fix/velocity flags.
+  // validUTC (bit 2) indicates both date and time are valid.
+  m_payload.validFlags &= ~(GNSS_FLAG_DATE_VALID | GNSS_FLAG_TIME_VALID);
+  if ((valid & 0x04U) != 0U) {
+    m_payload.validFlags |= (GNSS_FLAG_DATE_VALID | GNSS_FLAG_TIME_VALID);
+  }
+}
 //
 // Called when POSLLH, SOL, and VELNED have all arrived for the same iTOW.
 // ---------------------------------------------------------------------------
 
 /**
  * @brief Assembles a complete M6- solution from the three buffered epoch messages.
- * @details Converts each field to CRSF units, populates m_payload, and sets
- *          m_newData.  m_m6Flags is cleared on entry so the next epoch can begin
- *          accumulating immediately.  Unit conversions:
- *            altitude  : mm (hMSL) → metres → +1000 m CRSF offset
- *            groundspeed: cm/s → hundredths of km/h  (× 36 / 10)
- *            heading   : 1e-5 ° → hundredths of °   (normaliseHeading1e5)
+ * @details Populates m_payload in natural units and sets m_newData.  m_m6Flags
+ *          is cleared on entry so the next epoch can begin accumulating
+ *          immediately.  Unit conversions applied:
+ *            velN / velE / velD / gSpeed : cm/s → mm/s (× 10)
+ *            sAcc                        : cm/s → mm/s (× 10)
+ *          All other fields are in their canonical GnssData units already.
+ *          Protocol-specific conversions for getPayload() are applied in
+ *          GnssParserBase::getPayload().
  */
 void UbxParser::assembleM6Solution()
 {
-  m_m6Flags  = 0U;
-  m_fixValid = m_m6FixValid;
+  m_m6Flags = 0U;
+  // Preserve DATE_VALID / TIME_VALID bits set by processM6TimeUtc();
+  // FIX_OK and VEL_VALID are overwritten based on this epoch's validity.
+  const uint8_t timeFlags = m_payload.validFlags &
+      static_cast<uint8_t>(GNSS_FLAG_DATE_VALID | GNSS_FLAG_TIME_VALID);
+  m_payload.fixType    = m_m6FixType;
+  m_payload.validFlags = static_cast<uint8_t>(timeFlags |
+      (m_m6FixValid
+          ? static_cast<uint8_t>(GNSS_FLAG_FIX_OK | GNSS_FLAG_VEL_VALID)
+          : 0U));
 
-  m_payload.latitude  = m_m6Lat;
-  m_payload.longitude = m_m6Lon;
+  // Position (direct — already in mm and 1e-7 °)
+  m_payload.latitude      = m_m6Lat;
+  m_payload.longitude     = m_m6Lon;
+  m_payload.altMSL        = m_m6Hmsl;    // mm
+  m_payload.altEllipsoid  = m_m6Height;  // mm above WGS84 ellipsoid
 
-  // hMSL in mm → metres → add CRSF offset.
-  m_payload.altitude = clampAltU16(
-      (m_m6Hmsl / static_cast<int32_t>(1000)) + CRSF_ALT_OFFSET_M);
+  // Position accuracy (direct — already in mm)
+  m_payload.hAcc          = m_m6HAcc;
+  m_payload.vAcc          = m_m6VAcc;
 
-  // NAV-VELNED gSpeed: U4, cm/s.  cm/s → hundredths of km/h: ×36/10.
-  m_payload.groundspeed = static_cast<uint16_t>(m_m6GSpeed * 36U / 10U);
+  // NED velocity: cm/s → mm/s (× 10)
+  m_payload.velN          = m_m6VelN * 10;
+  m_payload.velE          = m_m6VelE * 10;
+  m_payload.velD          = m_m6VelD * 10;
 
-  m_payload.heading    = normaliseHeading1e5(m_m6Heading);
-  m_payload.satellites = m_m6NumSv;
+  // 2-D ground speed: cm/s → mm/s (× 10)
+  m_payload.gSpeed        = static_cast<int32_t>(m_m6GSpeed * 10U);
+
+  // Heading: 1e-5 °, normalised to [0, 36 000 000)
+  m_payload.headMot       = normaliseHeadingRaw1e5(m_m6Heading);
+
+  // Speed accuracy: cm/s → mm/s (× 10)
+  m_payload.sAcc          = m_m6SAcc * 10U;
+
+  // Heading accuracy: 1e-5 ° (direct from NAV-VELNED cAcc)
+  m_payload.headAcc       = m_m6CAcc;
+
+  // Position DOP: dimensionless × 100 (direct from NAV-SOL)
+  m_payload.pDOP          = m_m6PDop;
+
+  m_payload.satellites    = m_m6NumSv;
   m_newData = true;
 }

@@ -288,6 +288,11 @@ private:
   bool cfgMsgNavPv(HardwareSerial& serial, uint16_t rate);
 
   /**
+   * @brief Sends CFG-MSG to enable NAV-TIMEUTC output at the specified rate.
+   */
+  bool cfgMsgNavTimeUtc(HardwareSerial& serial, uint16_t rate);
+
+  /**
    * @brief Sends CFG-CFG to save all configuration groups to flash and waits for ACK.
    * @param serial Reference to the open HardwareSerial port.
    * @return true on ACK-ACK, false on NACK or timeout.

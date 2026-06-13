@@ -66,8 +66,11 @@
 // ---------
 //     gnss.update();
 //     if (gnss.hasNewData() && gnss.isFixValid()) {
-//       CrsfGpsPayload p;
+//       CrsfGpsPayload p;         // CRSF-encoded output (deprecated)
 //       gnss.getPayload(p);
+//
+//       GnssData d;               // Natural-unit output
+//       gnss.getData(d);
 //     }
 //
 // IMPORTANT — ESP32 only
@@ -145,6 +148,16 @@ public:
    */
   void getPayload(CrsfGpsPayload& dest) const;
 
+  /**
+   * @brief Copies the most recently decoded navigation solution into dest in
+   *        natural / SI units without any protocol-specific conversion.
+   * @details Delegates unconditionally to the parser.  Fields not yet populated
+   *          by the active parser are zero.  The contents of dest are undefined
+   *          until at least one complete solution has been assembled.
+   * @param dest Reference to a GnssData struct that receives the current solution.
+   */
+  void getData(GnssData& dest) const;
+
   // -------------------------------------------------------------------------
   // Diagnostics
   // -------------------------------------------------------------------------
@@ -155,13 +168,19 @@ public:
    */
   bool isConfigured() const;
 
-  /**
-   * @brief Returns the hardware generation currently in use by the parser.
-   * @details In full mode with UNKNOWN constructor argument, reflects the generation
-   *          detected via MON-VER.  In all other cases, reflects the constructor value.
-   * @return The active GpsProvider generation enumerator.
-   */
-  GpsProvider getDetectedProvider() const;
+/**
+ * @brief Returns the hardware generation in use by the parser.
+ * @details When UNKNOWN was passed to the constructor and begin() succeeded,
+ *          this reflects the generation detected via MON-VER, not UNKNOWN 
+ *          otherwise it reflects the values passed to the constructor.
+ */
+GpsProvider getActiveProvider() const;
+
+/**
+ * @brief Returns the hardware generation detected from the MON-VER probe.
+ * @details This reflects the generation detected via MON-VER.
+ */
+GpsProvider getDetectedProvider() const;
 
   /**
    * @brief Returns the result struct from the most recent full-mode configuration attempt.

@@ -31,7 +31,6 @@ GnssParserBase::GnssParserBase()
   : m_serial(nullptr)
   , m_payload{}
   , m_newData(false)
-  , m_fixValid(false)
 {
 }
 
@@ -56,18 +55,53 @@ bool GnssParserBase::hasNewData()
 
 /**
  * @brief Returns the fix-validity flag for the most recently decoded solution.
+ * @details Derives from GNSS_FLAG_FIX_OK in m_payload.validFlags, which is set
+ *          by each parser under the same condition as the former m_fixValid member.
  * @return true if the last decoded fix was a valid 3-D GNSS fix.
  */
 bool GnssParserBase::isFixValid() const
 {
-  return m_fixValid;
+  return (m_payload.validFlags & GNSS_FLAG_FIX_OK) != 0U;
+}
+
+/**
+ * @brief Converts the most recently decoded navigation solution to CRSF units
+ *        and copies it into dest.
+ * @details Unit conversions applied:
+ *            altMSL (mm)    → metres then + CRSF_ALT_OFFSET_M, clamped to uint16_t.
+ *            gSpeed (mm/s)  → hundredths of km/h  (× 36 / 100).
+ *            headMot (1e-5°)→ hundredths of °, via normaliseHeading1e5().
+ *          lat/lon (1e-7 °) and satellites are identical in both structs.
+ * @param dest Reference to a CrsfGpsPayload struct that receives the result.
+ */
+void GnssParserBase::getPayload(CrsfGpsPayload& dest) const
+{
+  dest.latitude  = m_payload.latitude;
+  dest.longitude = m_payload.longitude;
+
+  // altMSL is in mm; convert to metres then apply the CRSF +1000 m offset.
+  dest.altitude = clampAltU16(
+      m_payload.altMSL / static_cast<int32_t>(1000) + CRSF_ALT_OFFSET_M);
+
+  // gSpeed is in mm/s; mm/s → hundredths of km/h: × 36 / 100.
+  dest.groundspeed = static_cast<uint16_t>(
+      static_cast<uint32_t>(m_payload.gSpeed) * 36U / 100U);
+
+  // headMot is pre-normalised 1e-5 °; normaliseHeading1e5 divides by 1000
+  // to yield hundredths of °.  Input is already in [0, 36 000 000) so no
+  // range correction is applied inside the function.
+  dest.heading = normaliseHeading1e5(m_payload.headMot);
+
+  dest.satellites = m_payload.satellites;
 }
 
 /**
  * @brief Copies the most recently decoded navigation solution into dest.
- * @param dest Reference to a CrsfGpsPayload struct that receives the current solution.
+ * @details Direct struct copy — no unit conversion.  Fields not yet populated
+ *          by the active parser are zero (see GnssData stage-population comments).
+ * @param dest Reference to a GnssData struct that receives the current solution.
  */
-void GnssParserBase::getPayload(CrsfGpsPayload& dest) const
+void GnssParserBase::getData(GnssData& dest) const
 {
   dest = m_payload;
 }
@@ -84,7 +118,6 @@ void GnssParserBase::getPayload(CrsfGpsPayload& dest) const
 void GnssParserBase::resetCommonState()
 {
   m_newData  = false;
-  m_fixValid = false;
   memset(&m_payload, 0, sizeof(m_payload));
 }
 
@@ -105,6 +138,17 @@ void GnssParserBase::resetCommonState()
  * @param out    Reference that receives the extracted value.
  */
 void GnssParserBase::readU1(const uint8_t* buf, uint8_t offset, uint8_t& out)
+{
+  memcpy(&out, &buf[offset], sizeof(out));
+}
+
+/**
+ * @brief Reads a uint16_t field from a raw little-endian byte buffer.
+ * @param buf    Pointer to the raw receive buffer.
+ * @param offset Byte offset of the field within buf.
+ * @param out    Reference that receives the extracted value.
+ */
+void GnssParserBase::readU2(const uint8_t* buf, uint8_t offset, uint16_t& out)
 {
   memcpy(&out, &buf[offset], sizeof(out));
 }
@@ -208,4 +252,24 @@ uint16_t GnssParserBase::normaliseHeading1e5(int32_t heading1e5)
   }
 
   return static_cast<uint16_t>(static_cast<uint32_t>(h) / 1000U);
+}
+
+/**
+ * @brief Normalises a raw heading in 1e-5 degrees to [0, 36 000 000).
+ * @details One additive or subtractive correction brings any value in the range
+ *          (-36 000 000, +36 000 000) into the half-open interval [0, 36 000 000),
+ *          equivalent to [0°, 360°).  The edge case of exactly 36 000 000 (360°)
+ *          maps to 0° as expected.  Used by concrete parsers to store
+ *          GnssData::headMot before calling normaliseHeading1e5() in getPayload().
+ * @param h  Heading in 1e-5 degree units, signed.
+ * @return   Heading in 1e-5 degree units, in [0, 36 000 000).
+ */
+int32_t GnssParserBase::normaliseHeadingRaw1e5(int32_t h)
+{
+  if (h < 0) {
+    h += static_cast<int32_t>(36000000);
+  } else if (h >= static_cast<int32_t>(36000000)) {
+    h -= static_cast<int32_t>(36000000);
+  }
+  return h;
 }

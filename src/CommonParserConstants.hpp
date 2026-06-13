@@ -46,9 +46,18 @@ static constexpr uint32_t GPS_UPDATE_BUDGET_US = 15U;
 static constexpr uint16_t GPS_MAX_PAYLOAD_LEN = 92U;
 
 // ---------------------------------------------------------------------------
-// CRSF altitude encoding
+// GnssData::validFlags bitmask constants
 //
-// CRSF represents altitude as (MSL metres + 1000), so that sea level is
-// encoded as 1000 and depths down to -1000 m are representable as zero.
+// Each bit is independent; callers should test the relevant bit(s) before
+// consuming the associated GnssData fields.
+//   FIX_OK     — a valid 3-D GNSS fix has been obtained.
+//   VEL_VALID  — velocity fields (velN/E/D, gSpeed, headMot) are valid.
+//   DATE_VALID — UTC date fields (year, month, day) are valid.   (Stage 9-11)
+//   TIME_VALID — UTC time fields (hour, minute, second, ms) are valid. (Stage 9-11)
 // ---------------------------------------------------------------------------
-static constexpr int32_t CRSF_ALT_OFFSET_M = 1000;
+static constexpr uint8_t GNSS_FLAG_FIX_OK    = 0x01U;
+static constexpr uint8_t GNSS_FLAG_VEL_VALID  = 0x02U;
+static constexpr uint8_t GNSS_FLAG_DATE_VALID = 0x04U;
+static constexpr uint8_t GNSS_FLAG_TIME_VALID = 0x08U;
+
+

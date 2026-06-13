@@ -20,6 +20,7 @@
 #include <Arduino.h>
 #include "CommonStructures.hpp"
 #include "CommonParserConstants.hpp"
+#include "CrsfConstants.hpp"
 
 // ---------------------------------------------------------------------------
 // GnssParserBase
@@ -27,8 +28,10 @@
 // Non-polymorphic base shared by UbxParser and CasicParser.
 //
 // Responsibilities:
-//   · Owns the shared output state (m_serial, m_payload, m_newData,
-//     m_fixValid).
+//   · Owns the shared output state (m_serial, m_payload, m_newData).
+//     m_payload is a GnssData in natural / SI units; getPayload() converts
+//     it to CrsfGpsPayload on demand.  Fix validity is encoded in
+//     m_payload.validFlags (GNSS_FLAG_FIX_OK bit); isFixValid() reads it.
 //   · Exposes the public three-method read interface (hasNewData,
 //     isFixValid, getPayload).
 //   · Provides protected typed little-endian field accessors and small
@@ -60,20 +63,38 @@ public:
 
   /**
    * @brief Returns true when the most recently decoded solution has a valid 3-D fix.
-   * @details Does not reset on read; returns the same value until the next
-   *          solution is assembled.  Always false before the first solution arrives.
+   * @details Derived from the GNSS_FLAG_FIX_OK bit of GnssData::validFlags.  Does
+   *          not reset on read; returns the same value until the next solution is
+   *          assembled.  Always false before the first solution arrives.
    * @return true if the last decoded fix was a valid 3-D GNSS fix.
    */
   bool isFixValid() const;
 
   /**
-   * @brief Copies the most recently decoded navigation solution into dest.
-   * @details Safe to call at any time, including before a valid fix is available.
-   *          Does not reset the new-data flag.  The contents of dest are
-   *          undefined until at least one solution has been assembled.
-   * @param dest Reference to a CrsfGpsPayload struct that receives the current solution.
+   * @brief Converts the most recently decoded navigation solution to CRSF units
+   *        and copies it into dest.
+   * @details Converts GnssData natural-unit fields to the CRSF-mandated scaling:
+   *          altMSL (mm) → metres + 1000 offset, gSpeed (mm/s) → hundredths of
+   *          km/h, headMot (1e-5 °) → hundredths of °.  lat/lon and satellites
+   *          are copied directly (same representation in both structs).
+   *          Safe to call at any time; the contents of dest are undefined until
+   *          at least one solution has been assembled.
+   * @param dest Reference to a CrsfGpsPayload struct that receives the result.
    */
   void getPayload(CrsfGpsPayload& dest) const;
+
+  /**
+   * @brief Copies the most recently decoded navigation solution into dest in
+   *        natural / SI units without any protocol-specific conversion.
+   * @details Fields are in the units defined by GnssData: position in 1e-7 °,
+   *          altitude and distances in mm, velocities in mm/s, headings in
+   *          1e-5 °.  Fields not yet populated by the active parser are zero.
+   *          Safe to call at any time; the contents of dest are undefined until
+   *          at least one solution has been assembled.  Does not reset the
+   *          new-data flag.
+   * @param dest Reference to a GnssData struct that receives the current solution.
+   */
+  void getData(GnssData& dest) const;
 
 protected:
 
@@ -85,9 +106,9 @@ protected:
 
   /**
    * @brief Resets the shared output state to its power-on defaults.
-   * @details Clears m_payload to zero, sets m_newData and m_fixValid to false.
-   *          Must be called from the concrete subclass resetState() whenever
-   *          the parser is reinitialised (e.g. from begin()).
+   * @details Zeroes m_payload via memset (clearing validFlags, fixType, and all
+   *          data fields) and clears m_newData.  Must be called from the concrete
+   *          subclass resetState() whenever the parser is reinitialised.
    */
   void resetCommonState();
 
@@ -113,6 +134,14 @@ protected:
    * @param out    Reference that receives the extracted value.
    */
   static void readU1(const uint8_t* buf, uint8_t offset, uint8_t&  out);
+
+  /**
+   * @brief Reads a uint16_t field from a raw little-endian byte buffer.
+   * @param buf    Pointer to the raw receive buffer.
+   * @param offset Byte offset of the field within buf.
+   * @param out    Reference that receives the extracted value.
+   */
+  static void readU2(const uint8_t* buf, uint8_t offset, uint16_t& out);
 
   /**
    * @brief Reads a uint32_t field from a raw little-endian byte buffer.
@@ -174,11 +203,22 @@ protected:
    */
   static uint16_t normaliseHeading1e5(int32_t heading1e5);
 
+  /**
+   * @brief Normalises a raw heading in 1e-5 degrees to [0, 36 000 000).
+   * @details One additive or subtractive correction brings any value in the
+   *          range (-36 000 000, +36 000 000) into the half-open interval
+   *          [0, 36 000 000), equivalent to [0°, 360°).  The edge case of
+   *          exactly 36 000 000 (360°) maps to 0° as expected.
+   *          Used by concrete parsers to store GnssData::headMot.
+   * @param h  Heading in 1e-5 degree units, signed.
+   * @return   Heading in 1e-5 degree units, in [0, 36 000 000).
+   */
+  static int32_t normaliseHeadingRaw1e5(int32_t h);
+
   // -------------------------------------------------------------------------
   // Shared output state — written by subclasses, read via public interface.
   // -------------------------------------------------------------------------
   HardwareSerial* m_serial;   ///< Bound serial port; nullptr until begin() is called.
-  CrsfGpsPayload  m_payload;  ///< Most recently decoded navigation solution.
+  GnssData        m_payload;  ///< Most recently decoded navigation solution in natural units.
   bool            m_newData;  ///< Set true by the subclass when a solution is complete.
-  bool            m_fixValid; ///< Fix validity flag for the most recent solution.
 };

@@ -117,33 +117,48 @@ private:
 
   /**
    * @brief Processes a NAV-POSLLH payload for M6- modules.
-   * @details Extracts the iTOW, longitude, latitude, and height above MSL into
-   *          the M6- assembly buffers and sets M6_FLAG_POSLLH.  Calls
-   *          assembleM6Solution() if all three epoch messages have arrived.
+   * @details Extracts iTOW, lon, lat, WGS84 height, MSL height, and horizontal
+   *          and vertical accuracy estimates into the M6- assembly buffers and
+   *          sets M6_FLAG_POSLLH.  Calls assembleM6Solution() if the epoch is complete.
    */
   void processM6Posllh();
 
   /**
    * @brief Processes a NAV-SOL payload for M6- modules.
-   * @details Extracts fix type, flags, and satellite count.  May arrive in any
-   *          order relative to POSLLH and VELNED within the same epoch.  Sets
+   * @details Extracts fix type, flags, pDOP, and satellite count.  May arrive in
+   *          any order relative to POSLLH and VELNED within the same epoch.  Sets
    *          M6_FLAG_SOL and calls assembleM6Solution() if the epoch is complete.
    */
   void processM6Sol();
 
   /**
    * @brief Processes a NAV-VELNED payload for M6- modules.
-   * @details Extracts 2-D ground speed and vehicle heading into the M6- assembly
-   *          buffers and sets M6_FLAG_VELNED.  Calls assembleM6Solution() if all
-   *          three epoch messages have arrived.
+   * @details Extracts NED velocities, 2-D ground speed, heading, speed accuracy,
+   *          and heading accuracy into the M6- assembly buffers and sets
+   *          M6_FLAG_VELNED.  Calls assembleM6Solution() if the epoch is complete.
    */
   void processM6Velned();
 
   /**
+   * @brief Processes a NAV-TIMEUTC payload for M6- modules.
+   * @details Updates UTC time fields in GnssData without participating in the
+   *          epoch gate.  Does not set m_newData.  Sets DATE_VALID and TIME_VALID
+   *          in validFlags when the valid byte bit 2 (validUTC) is set.
+   */
+  void processM6TimeUtc();
+
+  /**
    * @brief Assembles a complete M6- navigation solution from the three epoch buffers.
-   * @details Called when M6_FLAGS_ALL is set, indicating POSLLH, SOL, and VELNED have
-   *          all arrived with the same iTOW.  Converts raw field values to CRSF units,
-   *          populates m_payload, and sets m_newData.  Resets m_m6Flags on exit.
+   * @details Called when M6_FLAGS_ALL is set.  Populates m_payload in natural units
+   *          and sets m_newData.  Resets m_m6Flags on entry.  Unit conversions:
+   *            altMSL / altEllipsoid : mm (direct from NAV-POSLLH)
+   *            hAcc / vAcc           : mm (direct from NAV-POSLLH)
+   *            velN / velE / velD    : cm/s → mm/s (× 10)
+   *            gSpeed                : cm/s → mm/s (× 10)
+   *            headMot               : 1e-5 ° normalised to [0, 36 000 000)
+   *            sAcc                  : cm/s → mm/s (× 10)
+   *            headAcc               : 1e-5 ° (direct from NAV-VELNED cAcc)
+   *            pDOP                  : dimensionless × 100 (direct from NAV-SOL)
    */
   void assembleM6Solution();
 
@@ -175,14 +190,31 @@ private:
   // A complete solution is emitted when POSLLH, SOL, and VELNED have all
   // been received with the same iTOW value (m_m6AssembleItow).
   // m_m6Flags tracks which of the three messages have arrived.
+  // Fields from each message are held here until assembleM6Solution() fires.
   // -------------------------------------------------------------------------
   uint8_t  m_m6Flags;         ///< Bitmask of M6- epoch messages received (M6_FLAG_*).
   uint32_t m_m6AssembleItow;  ///< iTOW of the epoch currently being assembled.
-  int32_t  m_m6Lon;           ///< Longitude from NAV-POSLLH, 1e-7 °.
-  int32_t  m_m6Lat;           ///< Latitude from NAV-POSLLH, 1e-7 °.
-  int32_t  m_m6Hmsl;          ///< Height above MSL from NAV-POSLLH, mm.
-  uint32_t m_m6GSpeed;        ///< 2-D ground speed from NAV-VELNED, cm/s.
-  int32_t  m_m6Heading;       ///< Vehicle heading from NAV-VELNED, 1e-5 °, signed.
-  uint8_t  m_m6NumSv;         ///< Satellite count from NAV-SOL.
-  bool     m_m6FixValid;      ///< Fix validity flag from NAV-SOL.
+
+  // From NAV-POSLLH
+  int32_t  m_m6Lon;           ///< Longitude, 1e-7 °.
+  int32_t  m_m6Lat;           ///< Latitude, 1e-7 °.
+  int32_t  m_m6Height;        ///< Height above WGS84 ellipsoid, mm.
+  int32_t  m_m6Hmsl;          ///< Height above MSL, mm.
+  uint32_t m_m6HAcc;          ///< Horizontal accuracy estimate, mm.
+  uint32_t m_m6VAcc;          ///< Vertical accuracy estimate, mm.
+
+  // From NAV-VELNED  (velocities in cm/s; converted to mm/s in assembleM6Solution)
+  int32_t  m_m6VelN;          ///< NED north velocity, cm/s (signed).
+  int32_t  m_m6VelE;          ///< NED east  velocity, cm/s (signed).
+  int32_t  m_m6VelD;          ///< NED down  velocity, cm/s (signed).
+  uint32_t m_m6GSpeed;        ///< 2-D ground speed, cm/s.
+  int32_t  m_m6Heading;       ///< Vehicle heading, 1e-5 °, signed.
+  uint32_t m_m6SAcc;          ///< Speed accuracy, cm/s.
+  uint32_t m_m6CAcc;          ///< Course/heading accuracy, 1e-5 °.
+
+  // From NAV-SOL
+  uint8_t  m_m6NumSv;         ///< Satellite count.
+  uint8_t  m_m6FixType;       ///< Raw gpsFix value (UBX convention: 0=none 2=2D 3=3D 4=DR).
+  uint16_t m_m6PDop;          ///< Position DOP, dimensionless × 100.
+  bool     m_m6FixValid;      ///< Fix validity flag (gnssFixOK && gpsFix == 3D).
 };

@@ -443,9 +443,11 @@ bool UbxConfigurator::identifyModule(HardwareSerial& serial)
 /**
  * @brief Parses the major protocol version from a raw MON-VER frame buffer.
  * @details MON-VER payload: char swVersion[30], char hwVersion[10], then
- *          N × char extension[30].  Extension strings beginning with "PROTVER="
+ *          N × char extension[30].  Extension strings beginning with "PROTVER"
  *          carry the version.  Only the leading decimal integer before any '.'
  *          is extracted; minor versions and sub-versions are not captured here.
+ *          Some MON-VER payloads do not carry a "PROTVER" message this method
+ *          returns 0 in that case and the module version is likely 6M or earlier.
  */
 uint8_t UbxConfigurator::parseProtocolVersion(const uint8_t* buf, uint16_t bufLen)
 {
@@ -468,10 +470,16 @@ uint8_t UbxConfigurator::parseProtocolVersion(const uint8_t* buf, uint16_t bufLe
     const char* ext = reinterpret_cast<const char*>(
       payload + extStart + (i * static_cast<uint16_t>(UBX_MONVER_EXT_LEN)));
 
-    if (strncmp(ext, "PROTVER=", 8U) == 0) {
-      const char* p     = ext + 8U;
-      uint8_t     major = 0U;
-      while ((*p >= '0') && (*p <= '9')) {
+    if (strncmp(ext, "PROTVER", 7U) == 0) {
+      const char* p = ext + 7U;
+      // Skip non-digits (like '=' or spaces) to find the start of the version number.
+      const char* limit = ext + static_cast<uint16_t>(UBX_MONVER_EXT_LEN);
+      while ((p < limit) && ((*p < '0') || (*p > '9'))) {
+        ++p;
+      }
+
+      uint8_t major = 0U;
+      while ((p < limit) && (*p >= '0') && (*p <= '9')) {
         major = static_cast<uint8_t>((major * 10U) + static_cast<uint8_t>(*p - '0'));
         ++p;
       }
@@ -575,6 +583,17 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     }
     delay(POST_CMD_DELAY_MS);
 
+    // Enable NAV-TIMEUTC for UTC date/time (decoupled from epoch gate).
+    txLen = UbxMessageBuilder::buildCfgMsg(
+      UBX_CLASS_NAV, UBX_ID_NAV_TIMEUTC, 1U,
+      txBuf, static_cast<uint16_t>(sizeof(txBuf)));
+    serial.write(txBuf, txLen);
+    serial.flush();
+    if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_MSG, ACK_TIMEOUT_MS)) {
+      return UbxConfigStatus::ERR_MSG_FAILED;
+    }
+    delay(POST_CMD_DELAY_MS);
+
   } else {
     // UBX_M7_M8: enable NAV-PVT.
     txLen = UbxMessageBuilder::buildCfgMsg(
@@ -593,7 +612,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     txBuf, static_cast<uint16_t>(sizeof(txBuf)));
   serial.write(txBuf, txLen);
   serial.flush();
-  if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_CFG, ACK_TIMEOUT_MS)) {
+  if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_CFG, SAVE_TIMEOUT_MS)) {
     return UbxConfigStatus::ERR_SAVE_FAILED;
   }
   delay(POST_CMD_DELAY_MS);

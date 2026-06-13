@@ -38,36 +38,78 @@ static constexpr uint8_t UBX_SYNC2 = 0x62U;
 // ---------------------------------------------------------------------------
 static constexpr uint8_t UBX_CLASS_NAV = 0x01U;  // Navigation results
 
-static constexpr uint8_t UBX_ID_NAV_PVT    = 0x07U;  // M7+: all-in-one solution
-static constexpr uint8_t UBX_ID_NAV_POSLLH = 0x02U;  // M6-: position
-static constexpr uint8_t UBX_ID_NAV_SOL    = 0x06U;  // M6-: fix status + satellites
-static constexpr uint8_t UBX_ID_NAV_VELNED = 0x12U;  // M6-: velocity / heading
+static constexpr uint8_t UBX_ID_NAV_PVT     = 0x07U;  // M7+: all-in-one solution
+static constexpr uint8_t UBX_ID_NAV_POSLLH  = 0x02U;  // M6-: position
+static constexpr uint8_t UBX_ID_NAV_SOL     = 0x06U;  // M6-: fix status + satellites
+static constexpr uint8_t UBX_ID_NAV_VELNED  = 0x12U;  // M6-: velocity / heading
+static constexpr uint8_t UBX_ID_NAV_TIMEUTC = 0x21U;  // M6-: UTC time
 
 // Expected payload lengths — frames that do not match are silently discarded.
-static constexpr uint16_t UBX_NAVPVT_PAYLOAD_LEN    = 92U;
-static constexpr uint16_t UBX_NAVPOSLLH_PAYLOAD_LEN = 28U;
-static constexpr uint16_t UBX_NAVSOL_PAYLOAD_LEN    = 52U;
-static constexpr uint16_t UBX_NAVVELNED_PAYLOAD_LEN = 36U;
+static constexpr uint16_t UBX_NAVPVT_PAYLOAD_LEN     = 92U;
+static constexpr uint16_t UBX_NAVPOSLLH_PAYLOAD_LEN  = 28U;
+static constexpr uint16_t UBX_NAVSOL_PAYLOAD_LEN     = 52U;
+static constexpr uint16_t UBX_NAVVELNED_PAYLOAD_LEN  = 36U;
+static constexpr uint16_t UBX_NAVTIMEUTC_PAYLOAD_LEN = 20U;
+
+// ---------------------------------------------------------------------------
+// UBX NAV-TIMEUTC payload offsets (M6-, payload base = 0)
+//
+//   0  iTOW  (U4, ms)            — read for epoch correlation
+//   4  tAcc  (U4, ns)            — not used
+//   8  nano  (I4, ns fraction)   — derived millisecond
+//  12  year  (U2)  14 month (U1)  15 day  (U1)
+//  16  hour  (U1)  17 min   (U1)  18 sec  (U1)
+//  19  valid (X1)  b0=validTOW  b1=validWKN  b2=validUTC
+// ---------------------------------------------------------------------------
+static constexpr uint8_t UBX_TIMEUTC_OFF_ITOW  =  0U;
+static constexpr uint8_t UBX_TIMEUTC_OFF_NANO  =  8U;  // I4, ns fraction of second
+static constexpr uint8_t UBX_TIMEUTC_OFF_YEAR  = 12U;  // U2
+static constexpr uint8_t UBX_TIMEUTC_OFF_MONTH = 14U;  // U1
+static constexpr uint8_t UBX_TIMEUTC_OFF_DAY   = 15U;  // U1
+static constexpr uint8_t UBX_TIMEUTC_OFF_HOUR  = 16U;  // U1
+static constexpr uint8_t UBX_TIMEUTC_OFF_MIN   = 17U;  // U1
+static constexpr uint8_t UBX_TIMEUTC_OFF_SEC   = 18U;  // U1
+static constexpr uint8_t UBX_TIMEUTC_OFF_VALID = 19U;  // X1, bit 2 = validUTC
 
 // ---------------------------------------------------------------------------
 // UBX NAV-PVT payload offsets (M7+, payload base = 0)
 // ---------------------------------------------------------------------------
-static constexpr uint8_t UBX_PVT_OFF_FIXTYPE = 20U;
-static constexpr uint8_t UBX_PVT_OFF_FLAGS   = 21U;
-static constexpr uint8_t UBX_PVT_OFF_NUMSV   = 23U;
-static constexpr uint8_t UBX_PVT_OFF_LON     = 24U;  // I4, 1e-7 °
-static constexpr uint8_t UBX_PVT_OFF_LAT     = 28U;  // I4, 1e-7 °
-static constexpr uint8_t UBX_PVT_OFF_HMSL    = 36U;  // I4, mm above MSL
-static constexpr uint8_t UBX_PVT_OFF_GSPEED  = 60U;  // I4, mm/s ground speed
-static constexpr uint8_t UBX_PVT_OFF_HEADMOT = 64U;  // I4, 1e-5 °
+static constexpr uint8_t UBX_PVT_OFF_YEAR    =  4U;  // U2, UTC year (1999–2099)
+static constexpr uint8_t UBX_PVT_OFF_MONTH   =  6U;  // U1, UTC month (1–12)
+static constexpr uint8_t UBX_PVT_OFF_DAY     =  7U;  // U1, UTC day (1–31)
+static constexpr uint8_t UBX_PVT_OFF_HOUR    =  8U;  // U1, UTC hour (0–23)
+static constexpr uint8_t UBX_PVT_OFF_MIN     =  9U;  // U1, UTC minute (0–59)
+static constexpr uint8_t UBX_PVT_OFF_SEC     = 10U;  // U1, UTC second (0–60)
+static constexpr uint8_t UBX_PVT_OFF_VALID   = 11U;  // X1, validity flags (b0=date b1=time)
+static constexpr uint8_t UBX_PVT_OFF_NANO    = 16U;  // I4, ns fraction of second
+static constexpr uint8_t UBX_PVT_OFF_FIXTYPE  = 20U;
+static constexpr uint8_t UBX_PVT_OFF_FLAGS    = 21U;
+static constexpr uint8_t UBX_PVT_OFF_NUMSV    = 23U;
+static constexpr uint8_t UBX_PVT_OFF_LON      = 24U;  // I4, 1e-7 °
+static constexpr uint8_t UBX_PVT_OFF_LAT      = 28U;  // I4, 1e-7 °
+static constexpr uint8_t UBX_PVT_OFF_HEIGHT   = 32U;  // I4, mm above WGS84 ellipsoid
+static constexpr uint8_t UBX_PVT_OFF_HMSL     = 36U;  // I4, mm above MSL
+static constexpr uint8_t UBX_PVT_OFF_HACC     = 40U;  // U4, mm  horizontal accuracy
+static constexpr uint8_t UBX_PVT_OFF_VACC     = 44U;  // U4, mm  vertical accuracy
+static constexpr uint8_t UBX_PVT_OFF_VELN     = 48U;  // I4, mm/s NED north velocity
+static constexpr uint8_t UBX_PVT_OFF_VELE     = 52U;  // I4, mm/s NED east velocity
+static constexpr uint8_t UBX_PVT_OFF_VELD     = 56U;  // I4, mm/s NED down velocity
+static constexpr uint8_t UBX_PVT_OFF_GSPEED   = 60U;  // I4, mm/s 2-D ground speed
+static constexpr uint8_t UBX_PVT_OFF_HEADMOT  = 64U;  // I4, 1e-5 ° heading of motion
+static constexpr uint8_t UBX_PVT_OFF_SACC     = 68U;  // U4, mm/s speed accuracy
+static constexpr uint8_t UBX_PVT_OFF_HEADACC  = 72U;  // U4, 1e-5 ° heading accuracy
+static constexpr uint8_t UBX_PVT_OFF_PDOP     = 76U;  // U2, dimensionless × 100
 
 // ---------------------------------------------------------------------------
 // UBX NAV-POSLLH payload offsets (M6-, payload base = 0)
 // ---------------------------------------------------------------------------
-static constexpr uint8_t UBX_POSLLH_OFF_ITOW =  0U;  // U4, ms
-static constexpr uint8_t UBX_POSLLH_OFF_LON  =  4U;  // I4, 1e-7 °
-static constexpr uint8_t UBX_POSLLH_OFF_LAT  =  8U;  // I4, 1e-7 °
-static constexpr uint8_t UBX_POSLLH_OFF_HMSL = 16U;  // I4, mm above MSL
+static constexpr uint8_t UBX_POSLLH_OFF_ITOW   =  0U;  // U4, ms
+static constexpr uint8_t UBX_POSLLH_OFF_LON    =  4U;  // I4, 1e-7 °
+static constexpr uint8_t UBX_POSLLH_OFF_LAT    =  8U;  // I4, 1e-7 °
+static constexpr uint8_t UBX_POSLLH_OFF_HEIGHT = 12U;  // I4, mm above WGS84 ellipsoid
+static constexpr uint8_t UBX_POSLLH_OFF_HMSL   = 16U;  // I4, mm above MSL
+static constexpr uint8_t UBX_POSLLH_OFF_HACC   = 20U;  // U4, mm horizontal accuracy
+static constexpr uint8_t UBX_POSLLH_OFF_VACC   = 24U;  // U4, mm vertical accuracy
 
 // ---------------------------------------------------------------------------
 // UBX NAV-SOL payload offsets (M6-, payload base = 0)
@@ -75,14 +117,20 @@ static constexpr uint8_t UBX_POSLLH_OFF_HMSL = 16U;  // I4, mm above MSL
 static constexpr uint8_t UBX_SOL_OFF_ITOW       =  0U;  // U4, ms
 static constexpr uint8_t UBX_SOL_OFF_GPSFIXTYPE = 10U;  // U1
 static constexpr uint8_t UBX_SOL_OFF_FLAGS      = 11U;  // U1
+static constexpr uint8_t UBX_SOL_OFF_PDOP       = 44U;  // U2, dimensionless × 100
 static constexpr uint8_t UBX_SOL_OFF_NUMSV      = 47U;  // U1
 
 // ---------------------------------------------------------------------------
 // UBX NAV-VELNED payload offsets (M6-, payload base = 0)
 // ---------------------------------------------------------------------------
 static constexpr uint8_t UBX_VELNED_OFF_ITOW    =  0U;  // U4, ms
+static constexpr uint8_t UBX_VELNED_OFF_VELN    =  4U;  // I4, cm/s NED north velocity
+static constexpr uint8_t UBX_VELNED_OFF_VELE    =  8U;  // I4, cm/s NED east  velocity
+static constexpr uint8_t UBX_VELNED_OFF_VELD    = 12U;  // I4, cm/s NED down  velocity
 static constexpr uint8_t UBX_VELNED_OFF_GSPEED  = 20U;  // U4, cm/s 2-D ground speed
 static constexpr uint8_t UBX_VELNED_OFF_HEADING = 24U;  // I4, 1e-5 °
+static constexpr uint8_t UBX_VELNED_OFF_SACC    = 28U;  // U4, cm/s speed accuracy
+static constexpr uint8_t UBX_VELNED_OFF_CACC    = 32U;  // U4, 1e-5 ° course/heading accuracy
 
 // ---------------------------------------------------------------------------
 // UBX fix-validity masks
