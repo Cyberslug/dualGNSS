@@ -85,6 +85,11 @@ CasicConfigResult CasicConfigurator::configure(HardwareSerial& serial,
     return result;
   }
 
+  if (!cfgMsgNavTimeUtc(serial, TARGET_NAV_PV_RATE)) {
+    result.status = CasicConfigStatus::ERR_MSG_FAILED;
+    return result;
+  }
+
   if (!cfgCfgSave(serial)) {
     result.status = CasicConfigStatus::ERR_SAVE_FAILED;
     return result;
@@ -518,6 +523,27 @@ bool CasicConfigurator::cfgMsgNavPv(HardwareSerial& serial, uint16_t rate)
 
   const uint16_t len = CasicMessageBuilder::buildCfgMsg(
     CASIC_CLASS_NAV, CASIC_ID_NAV_PV,
+    rate,
+    frame, static_cast<uint16_t>(sizeof(frame)));
+
+  const bool ok = sendAndWaitAck(serial, frame, len,
+                                  CASIC_CLASS_CFG, CASIC_ID_CFG_MSG,
+                                  ACK_TIMEOUT_MS);
+  if (ok) { delay(POST_CMD_DELAY_MS); }
+  return ok;
+}
+
+/**
+ * @brief Builds and sends a CFG-MSG command to enable NAV-TIMEUTC output.
+ * @details Enables one NAV-TIMEUTC (class 0x01, ID 0x10) message per epoch,
+ *          providing UTC date and time independently of the NAV-PV message.
+ */
+bool CasicConfigurator::cfgMsgNavTimeUtc(HardwareSerial& serial, uint16_t rate)
+{
+  uint8_t frame[CASIC_MAX_FRAME_BUF];
+
+  const uint16_t len = CasicMessageBuilder::buildCfgMsg(
+    CASIC_CLASS_NAV, CASIC_ID_NAV_TIMEUTC,
     rate,
     frame, static_cast<uint16_t>(sizeof(frame)));
 

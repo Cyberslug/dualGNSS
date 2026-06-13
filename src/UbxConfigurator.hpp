@@ -155,7 +155,8 @@ private:
   static constexpr uint8_t NUM_BAUD_CANDIDATES = 6U;
 
   // Timing constants (ms).
-  static constexpr uint32_t ACK_TIMEOUT_MS     = 500UL;
+  static constexpr uint32_t ACK_TIMEOUT_MS     = 500UL;  // RAM writes
+  static constexpr uint32_t SAVE_TIMEOUT_MS    = 2000UL; // Flash/BBR commit
   static constexpr uint32_t MONVER_TIMEOUT_MS  = 1500UL;
   static constexpr uint32_t SWEEP_SETTLE_MS    = 150UL;  // between burst pairs
   static constexpr uint32_t BAUD_OPEN_DELAY_MS =  20UL;  // after serial.begin()

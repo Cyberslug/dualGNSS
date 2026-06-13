@@ -129,6 +129,15 @@ void CasicGNSS::getPayload(CrsfGpsPayload& dest) const
   m_parser.getPayload(dest);
 }
 
+/**
+ * @brief Copies the most recently decoded navigation solution into dest in
+ *        natural / SI units.  Delegates unconditionally to the parser.
+ */
+void CasicGNSS::getData(GnssData& dest) const
+{
+  m_parser.getData(dest);
+}
+
 // ---------------------------------------------------------------------------
 // Diagnostics
 // ---------------------------------------------------------------------------

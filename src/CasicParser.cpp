@@ -16,7 +16,8 @@
 */
 
 #include "CasicParser.hpp"
-#include <string.h>  // memcpy, memset
+#include <math.h>   // sqrtf — variance → 1-sigma accuracy conversion
+#include <string.h> // memcpy, memset
 
 // ---------------------------------------------------------------------------
 // Construction / initialisation
@@ -248,91 +249,237 @@ void CasicParser::feedByte(uint8_t b)
  */
 void CasicParser::onFrame()
 {
-  static_assert((CASIC_NAVPV_PAYLOAD_LEN % 4U) == 0U,
+  static_assert((CASIC_NAVPV_PAYLOAD_LEN      % 4U) == 0U,
                 "CASIC NAV-PV payload length must be a multiple of 4 bytes");
+  static_assert((CASIC_NAVTIMEUTC_PAYLOAD_LEN % 4U) == 0U,
+                "CASIC NAV-TIMEUTC payload length must be a multiple of 4 bytes");
 
-  if ((m_class      == CASIC_CLASS_NAV)        &&
-      (m_id         == CASIC_ID_NAV_PV)        &&
+  if (m_class != CASIC_CLASS_NAV) { return; }
+
+  if ((m_id == CASIC_ID_NAV_PV) &&
       (m_payloadLen == CASIC_NAVPV_PAYLOAD_LEN)) {
     processNavPv();
+  } else if ((m_id == CASIC_ID_NAV_TIMEUTC) &&
+             (m_payloadLen == CASIC_NAVTIMEUTC_PAYLOAD_LEN)) {
+    processNavTimeUtc();
   }
 }
 
 // ---------------------------------------------------------------------------
 // CASIC NAV-PV payload processor
 //
-// Altitude
-// --------
+// Altitude (MSL)
+// --------------
 // The geodetic identity  h = H + N  relates WGS84 ellipsoidal height (h),
 // MSL altitude (H), and geoid undulation (N, positive when geoid is above
 // the ellipsoid).  Rearranging: H = h - N = height - sepGeoid.
 //
-// However, CASIC firmware versions appear to store the geoid separation with the opposite
-// sign convention, making the effective formula H = height + sepGeoid.  The
-// expression below uses the (+) form because that matched the firmware
+// However, CASIC firmware versions appear to store the geoid separation with
+// the opposite sign convention, making the effective formula H = height + sepGeoid.
+// The expression below uses the (+) form because that matched the firmware
 // version used during development.
 //
-// If the reported altitude differs from a known MSL reference by
-// approximately twice the local geoid undulation (typically 30–50 m at
-// mid-latitudes), change the (+) to (-) on the altitude line below.
+// If the reported altitude differs from a known MSL reference by approximately
+// twice the local geoid undulation (typically 30–50 m at mid-latitudes),
+// change the (+) to (−) on the altMSL line below.
+//
+// Altitude (ellipsoidal)
+// ----------------------
+// altEllipsoid is the WGS84 height field directly, converted to mm.
+// No geoid correction is applied.
+//
+// Accuracy fields — variance to 1-sigma conversion
+// -------------------------------------------------
+// CASIC reports hAcc, vAcc, sAcc, and cAcc as variances (m², (m/s)², °²).
+// GnssData stores them as 1-sigma estimates in mm, mm/s, and 1e-5 °
+// respectively, matching the UBX convention.  sqrtf() is applied at parse
+// time; the ESP32-S3 FPU makes this negligible.
+//
+// Velocity convention
+// -------------------
+// CASIC NAV-PV provides velocity in ENU (East-North-Up) order.  GnssData
+// uses NED (North-East-Down).  velN and velE map directly; velD = -velU.
 // ---------------------------------------------------------------------------
 
 /**
- * @brief Processes a CASIC NAV-PV payload and populates all CrsfGpsPayload fields.
- * @details Fix validity: posValid >= CASIC_POSVALID_MIN_3D (7) indicates a 3-D fix.
- *          Position: lat/lon are R8 (double, degrees) scaled to 1e-7 integer units.
- *          Altitude: derived from WGS84 height and geoid separation.
- *          Speed: m/s converted to hundredths of km/h by multiplying by 360.
- *          Heading: normalised to [0°, 360°) then scaled to hundredths of a degree;
- *          the modulo guards against float rounding pushing a value just below 360°
- *          up to exactly 36000 (which would be out of the valid CRSF range).
+ * @brief Processes a CASIC NAV-PV payload and populates GnssData fields.
+ * @details Fix validity: posValid >= CASIC_POSVALID_MIN_3D (7) for a 3-D fix.
+ *          Fields read from the 80-byte payload:
+ *            posValid, numSV — fix status and satellite count
+ *            pDop            — dimensionless DOP, stored as × 100 (U2)
+ *            lon / lat       — R8 degrees → 1e-7 ° integer
+ *            height          — R4 m → mm (altEllipsoid, direct WGS84 height)
+ *            sepGeoid        — R4 m (combined with height for altMSL)
+ *            hAcc / vAcc     — R4 m² variance → sqrtf → mm (1-sigma)
+ *            velN / velE     — R4 m/s ENU → mm/s NED (same sign)
+ *            velU            — R4 m/s ENU up → -velU × 1000 = velD mm/s NED
+ *            speed2D         — R4 m/s → mm/s
+ *            heading         — R4 ° → 1e-5 °, normalised
+ *            sAcc            — R4 (m/s)² variance → sqrtf → mm/s (1-sigma)
+ *            cAcc            — R4 °² variance → sqrtf → 1e-5 ° (1-sigma)
+ *          Protocol-specific conversions for getPayload() are applied in
+ *          GnssParserBase::getPayload().
  */
 void CasicParser::processNavPv()
 {
+  // Fix status
   uint8_t posValid = 0U;
+  uint8_t velValid = 0U;
   uint8_t numSv    = 0U;
   readU1(m_buf, CASIC_PV_OFF_POSVALID, posValid);
+  readU1(m_buf, CASIC_PV_OFF_VELVALID, velValid);
   readU1(m_buf, CASIC_PV_OFF_NUMSV,    numSv);
 
-  m_fixValid = (posValid >= CASIC_POSVALID_MIN_3D);
+  // Map CASIC posValid to UBX-convention fixType
+  // posValid: 0=invalid 4=DR 6=2-D 7=3-D 8=GNSS+DR → fixType: 0 1 2 3 4
+  uint8_t fixType = 0U;
+  switch (posValid) {
+    case 4U: fixType = 1U; break;
+    case 6U: fixType = 2U; break;
+    case 7U: fixType = 3U; break;
+    case 8U: fixType = 4U; break;
+    default:  fixType = 0U; break;
+  }
+  m_payload.fixType = fixType;
 
-  // lat/lon stored as R8 (double) in degrees.
+  const bool fixOk = (posValid >= CASIC_POSVALID_MIN_3D);
+  uint8_t vf = fixOk ? static_cast<uint8_t>(GNSS_FLAG_FIX_OK) : 0U;
+  if (velValid >= CASIC_VELVALID_MIN_2D) {
+    vf |= GNSS_FLAG_VEL_VALID;
+  }
+  // Preserve DATE_VALID / TIME_VALID bits written by processNavTimeUtc();
+  // only FIX_OK and VEL_VALID are owned by this function.
+  m_payload.validFlags = static_cast<uint8_t>(
+      (m_payload.validFlags & (GNSS_FLAG_DATE_VALID | GNSS_FLAG_TIME_VALID)) | vf);
+
+  // DOP: R4 dimensionless → U2 × 100
+  float pDop = 0.0f;
+  readR4(m_buf, CASIC_PV_OFF_PDOP, pDop);
+
+  // Position: lat/lon as R8 degrees
   double lon = 0.0;
   double lat = 0.0;
   readR8(m_buf, CASIC_PV_OFF_LON, lon);
   readR8(m_buf, CASIC_PV_OFF_LAT, lat);
 
-  // Scale from decimal degrees to 1e-7 integer degrees for CRSF encoding.
-  // GPS coordinates are bounded to ±180° / ±90°, so the products fit in int32_t.
+  // Altitude fields: both in R4 metres
+  float height   = 0.0f;
+  float sepGeoid = 0.0f;
+  readR4(m_buf, CASIC_PV_OFF_HEIGHT,   height);
+  readR4(m_buf, CASIC_PV_OFF_SEPGEOID, sepGeoid);
+
+  // Position accuracy: R4 m² variance each
+  float hAcc_m2 = 0.0f;
+  float vAcc_m2 = 0.0f;
+  readR4(m_buf, CASIC_PV_OFF_HACC, hAcc_m2);
+  readR4(m_buf, CASIC_PV_OFF_VACC, vAcc_m2);
+
+  // ENU velocity: R4 m/s each
+  float velN_ms = 0.0f;
+  float velE_ms = 0.0f;
+  float velU_ms = 0.0f;
+  readR4(m_buf, CASIC_PV_OFF_VELN, velN_ms);
+  readR4(m_buf, CASIC_PV_OFF_VELE, velE_ms);
+  readR4(m_buf, CASIC_PV_OFF_VELU, velU_ms);
+
+  // Speed and heading: R4
+  float speed2D = 0.0f;
+  float heading = 0.0f;
+  readR4(m_buf, CASIC_PV_OFF_SPEED2D, speed2D);
+  readR4(m_buf, CASIC_PV_OFF_HEADING, heading);
+
+  // Accuracy variances: R4
+  float sAcc_ms2  = 0.0f;
+  float cAcc_deg2 = 0.0f;
+  readR4(m_buf, CASIC_PV_OFF_SACC, sAcc_ms2);
+  readR4(m_buf, CASIC_PV_OFF_CACC, cAcc_deg2);
+
+  // -------------------------------------------------------------------------
+  // Populate GnssData
+  // -------------------------------------------------------------------------
+
+  // Position: degrees → 1e-7 °
   m_payload.longitude = static_cast<int32_t>(lon * 1.0e7);
   m_payload.latitude  = static_cast<int32_t>(lat * 1.0e7);
 
-  float height   = 0.0f;
-  float sepGeoid = 0.0f;
-  float speed2D  = 0.0f;
-  float heading  = 0.0f;
-  readR4(m_buf, CASIC_PV_OFF_HEIGHT,   height);
-  readR4(m_buf, CASIC_PV_OFF_SEPGEOID, sepGeoid);
-  readR4(m_buf, CASIC_PV_OFF_SPEED2D,  speed2D);
-  readR4(m_buf, CASIC_PV_OFF_HEADING,  heading);
+  // MSL altitude: metres → mm (see sign-convention note above)
+  m_payload.altMSL = static_cast<int32_t>((height - sepGeoid) * 1000.0f);
 
-  // MSL altitude in metres (see sign-convention note above), then CRSF offset.
-  m_payload.altitude = clampAltU16(
-      static_cast<int32_t>(height - sepGeoid) + CRSF_ALT_OFFSET_M);
+  // WGS84 ellipsoidal height: metres → mm (no geoid correction)
+  m_payload.altEllipsoid = static_cast<int32_t>(height * 1000.0f);
 
-  // speed2D is in m/s.  m/s → hundredths of km/h: × 360.
-  m_payload.groundspeed = static_cast<uint16_t>(speed2D * 360.0f);
+  // Position accuracy: sqrt(variance m²) → 1-sigma metres → mm
+  m_payload.hAcc = static_cast<uint32_t>(sqrtf(hAcc_m2) * 1000.0f);
+  m_payload.vAcc = static_cast<uint32_t>(sqrtf(vAcc_m2) * 1000.0f);
 
-  // heading is in degrees, may be slightly negative near north.
-  // Normalise to [0°, 360°) before scaling to hundredths.
-  // The modulo guards against float rounding pushing a value just below
-  // 360° up to exactly 36 000 (which would be out of the valid CRSF range).
-  if (heading < 0.0f) {
-    heading += 360.0f;
-  }
-  m_payload.heading = static_cast<uint16_t>(
-      static_cast<uint32_t>(heading * 100.0f) % 36000U);
+  // NED velocity: ENU m/s → mm/s; velD negates velU (ENU up → NED down)
+  m_payload.velN = static_cast<int32_t>(velN_ms * 1000.0f);
+  m_payload.velE = static_cast<int32_t>(velE_ms * 1000.0f);
+  m_payload.velD = static_cast<int32_t>(-velU_ms * 1000.0f);
+
+  // 2-D ground speed: m/s → mm/s
+  m_payload.gSpeed = static_cast<int32_t>(speed2D * 1000.0f);
+
+  // Heading: degrees → 1e-5 °, normalised to [0, 36 000 000)
+  m_payload.headMot = normaliseHeadingRaw1e5(
+      static_cast<int32_t>(heading * 100000.0f));
+
+  // Speed accuracy: sqrt(variance (m/s)²) → 1-sigma m/s → mm/s
+  m_payload.sAcc = static_cast<uint32_t>(sqrtf(sAcc_ms2) * 1000.0f);
+
+  // Heading accuracy: sqrt(variance °²) → 1-sigma ° → 1e-5 °
+  m_payload.headAcc = static_cast<uint32_t>(sqrtf(cAcc_deg2) * 100000.0f);
+
+  // DOP: dimensionless → × 100 (U2)
+  m_payload.pDOP = static_cast<uint16_t>(pDop * 100.0f);
 
   m_payload.satellites = numSv;
   m_newData = true;
+}
+
+// ---------------------------------------------------------------------------
+// CASIC NAV-TIMEUTC payload processor
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Processes a NAV-TIMEUTC payload and updates UTC time fields in GnssData.
+ * @details Called when a validated NAV-TIMEUTC frame (class 0x01, ID 0x10, 24 bytes)
+ *          arrives.  Does NOT set m_newData — time is updated asynchronously from
+ *          the navigation solution.  Sets GNSS_FLAG_DATE_VALID and/or
+ *          GNSS_FLAG_TIME_VALID in validFlags without disturbing other bits.
+ */
+void CasicParser::processNavTimeUtc()
+{
+  uint16_t ms        = 0U;
+  uint16_t year      = 0U;
+  uint8_t  month     = 0U;
+  uint8_t  day       = 0U;
+  uint8_t  hour      = 0U;
+  uint8_t  min       = 0U;
+  uint8_t  sec       = 0U;
+  uint8_t  valid     = 0U;
+  uint8_t  dateValid = 0U;
+
+  readU2(m_buf, CASIC_TIMEUTC_OFF_MS,        ms);
+  readU2(m_buf, CASIC_TIMEUTC_OFF_YEAR,      year);
+  readU1(m_buf, CASIC_TIMEUTC_OFF_MONTH,     month);
+  readU1(m_buf, CASIC_TIMEUTC_OFF_DAY,       day);
+  readU1(m_buf, CASIC_TIMEUTC_OFF_HOUR,      hour);
+  readU1(m_buf, CASIC_TIMEUTC_OFF_MIN,       min);
+  readU1(m_buf, CASIC_TIMEUTC_OFF_SEC,       sec);
+  readU1(m_buf, CASIC_TIMEUTC_OFF_VALID,     valid);
+  readU1(m_buf, CASIC_TIMEUTC_OFF_DATEVALID, dateValid);
+
+  m_payload.year        = year;
+  m_payload.month       = month;
+  m_payload.day         = day;
+  m_payload.hour        = hour;
+  m_payload.minute      = min;
+  m_payload.second      = sec;
+  m_payload.millisecond = (ms < 1000U) ? static_cast<uint16_t>(ms) : 999U;
+
+  // Update time validity flags without clearing fix/velocity flags
+  m_payload.validFlags &= ~(GNSS_FLAG_DATE_VALID | GNSS_FLAG_TIME_VALID);
+  if ((valid & 0x01U) != 0U)  { m_payload.validFlags |= GNSS_FLAG_TIME_VALID; }
+  if (dateValid >= 2U)         { m_payload.validFlags |= GNSS_FLAG_DATE_VALID; }
 }

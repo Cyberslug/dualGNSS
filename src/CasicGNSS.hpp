@@ -48,8 +48,11 @@
 // ---------
 //     gnss.update();
 //     if (gnss.hasNewData() && gnss.isFixValid()) {
-//       CrsfGpsPayload p;
+//       CrsfGpsPayload p;         // CRSF-encoded output (legacy - deprecated)
 //       gnss.getPayload(p);
+//
+//       GnssData d;               // Natural-unit output
+//       gnss.getData(d);
 //     }
 //
 // IMPORTANT — ESP32 only
@@ -117,6 +120,16 @@ public:
    * @param dest Reference to a CrsfGpsPayload struct that receives the current solution.
    */
   void getPayload(CrsfGpsPayload& dest) const;
+
+  /**
+   * @brief Copies the most recently decoded navigation solution into dest in
+   *        natural / SI units without any protocol-specific conversion.
+   * @details Delegates unconditionally to the parser.  Fields not yet populated
+   *          by the active parser are zero.  The contents of dest are undefined
+   *          until at least one complete solution has been assembled.
+   * @param dest Reference to a GnssData struct that receives the current solution.
+   */
+  void getData(GnssData& dest) const;
 
   // -------------------------------------------------------------------------
   // Diagnostics

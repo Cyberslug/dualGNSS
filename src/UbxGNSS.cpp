@@ -147,6 +147,15 @@ void UbxGNSS::getPayload(CrsfGpsPayload& dest) const
   m_parser.getPayload(dest);
 }
 
+/**
+ * @brief Copies the most recently decoded navigation solution into dest in
+ *        natural / SI units.  Delegates unconditionally to the parser.
+ */
+void UbxGNSS::getData(GnssData& dest) const
+{
+  m_parser.getData(dest);
+}
+
 // ---------------------------------------------------------------------------
 // Diagnostics
 // ---------------------------------------------------------------------------
@@ -163,11 +172,21 @@ bool UbxGNSS::isConfigured() const
 /**
  * @brief Returns the hardware generation in use by the parser.
  * @details When UNKNOWN was passed to the constructor and begin() succeeded,
- *          this reflects the generation detected via MON-VER, not UNKNOWN.
+ *          this reflects the generation detected via MON-VER, not UNKNOWN 
+ *          otherwise it reflects the values passed to the constructor.
+ */
+GpsProvider UbxGNSS::getActiveProvider() const
+{
+  return m_generation;
+}
+
+/**
+ * @brief Returns the hardware generation detected from the MON-VER probe.
+ * @details This reflects the generation detected via MON-VER.
  */
 GpsProvider UbxGNSS::getDetectedProvider() const
 {
-  return m_generation;
+  return m_configureResult.detectedProvider;
 }
 
 /**
