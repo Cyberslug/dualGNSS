@@ -29,7 +29,7 @@ object code from the other.
 | `CrsfConstants.hpp` | CRSF-specific encoding constants (altitude offset) |
 | `UbxConstants.hpp` | All u-blox protocol constants |
 | `CasicConstants.hpp` | All CASIC protocol constants |
-| `CommonStructures.hpp` | `GnssData` and `CrsfGpsPayload` structs |
+| `GnssTypes.hpp` | `GnssData` and `CrsfGpsPayload` structs |
 | `GpsProvider.hpp` | `GpsProvider` enum — hardware generation selector for `UbxGNSS` |
 
 ---

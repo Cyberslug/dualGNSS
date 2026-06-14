@@ -18,7 +18,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include "CommonStructures.hpp"
+#include "GnssTypes.hpp"
 #include "CommonParserConstants.hpp"
 #include "CrsfConstants.hpp"
 
