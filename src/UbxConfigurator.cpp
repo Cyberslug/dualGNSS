@@ -47,7 +47,7 @@ static constexpr uint16_t RX_BUF_LEN = 512U;
  */
 UbxConfigResult UbxConfigurator::configure(HardwareSerial& serial,
                                             int8_t rxPin, int8_t txPin,
-                                            GpsProvider generation)
+                                            UbxSeries generation)
 {
   m_rxPin           = rxPin;
   m_txPin           = txPin;
@@ -55,8 +55,8 @@ UbxConfigResult UbxConfigurator::configure(HardwareSerial& serial,
   m_generation      = generation;
 
   UbxConfigResult result{};
-  result.status           = UbxConfigStatus::ERR_BAUD_NOT_FOUND;
-  result.detectedProvider = GpsProvider::UNKNOWN;
+  result.status           = GnssConfigStatus::ERR_BAUD_NOT_FOUND;
+  result.detectedProvider = UbxSeries::UNKNOWN;
   result.detectedBaud     = 0UL;
   result.protocolVersion  = 0U;
   result.validationPassed = false;
@@ -79,30 +79,30 @@ UbxConfigResult UbxConfigurator::configure(HardwareSerial& serial,
 
   // Resolve generation from protocol version only when the caller did not
   // declare one at construction.
-  if (m_generation == GpsProvider::UNKNOWN) {
+  if (m_generation == UbxSeries::UNKNOWN) {
     if (m_protocolVersion <= UBX_PROTO_VER_M6_MAX) {
-      m_generation = GpsProvider::UBX_M6_MINUS;
+      m_generation = UbxSeries::UBX_M6_MINUS;
     } else if (m_protocolVersion < UBX_PROTO_VER_VALSET_MIN) {
-      m_generation = GpsProvider::UBX_M7_M8;
+      m_generation = UbxSeries::UBX_M7_M8;
     } else {
-      m_generation = GpsProvider::UBX_M9_PLUS;
+      m_generation = UbxSeries::UBX_M9_PLUS;
     }
   }
   result.detectedProvider = m_generation;
 
   // Phase 2: run the appropriate configuration path.
-  const UbxConfigStatus cfgStatus =
-    (m_generation == GpsProvider::UBX_M9_PLUS)
+  const GnssConfigStatus cfgStatus =
+    (m_generation == UbxSeries::UBX_M9_PLUS)
       ? configureValset(serial)
       : configureLegacy(serial);
 
-  if (cfgStatus != UbxConfigStatus::OK) {
+  if (cfgStatus != GnssConfigStatus::OK) {
     result.status = cfgStatus;
     return result;
   }
 
   result.validationPassed = true;
-  result.status           = UbxConfigStatus::OK;
+  result.status           = GnssConfigStatus::OK;
   return result;
 }
 
@@ -506,7 +506,7 @@ uint8_t UbxConfigurator::parseProtocolVersion(const uint8_t* buf, uint16_t bufLe
  *          4. CFG-CFG: save all subsections to all available non-volatile storage.
  *          5. validateLegacy(): read back CFG-PRT and CFG-RATE to confirm.
  */
-UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
+GnssConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
 {
   uint8_t  txBuf[UbxMessageBuilder::MAX_TX_FRAME];
   uint16_t txLen;
@@ -527,7 +527,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     serial.write(txBuf, txLen);
     serial.flush();
     if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_PRT, ACK_TIMEOUT_MS)) {
-      return UbxConfigStatus::ERR_PROTO_FINAL_FAILED;
+      return GnssConfigStatus::ERR_PROTO_FINAL_FAILED;
     }
   }
   delay(POST_CMD_DELAY_MS);
@@ -545,13 +545,13 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     serial.write(txBuf, txLen);
     serial.flush();
     if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_RATE, ACK_TIMEOUT_MS)) {
-      return UbxConfigStatus::ERR_RATE_FAILED;
+      return GnssConfigStatus::ERR_RATE_FAILED;
     }
   }
   delay(POST_CMD_DELAY_MS);
 
   // Message enables — branch on declared generation, not protocol version.
-  if (m_generation == GpsProvider::UBX_M6_MINUS) {
+  if (m_generation == UbxSeries::UBX_M6_MINUS) {
     // M6: enable the three-message epoch set.
     txLen = UbxMessageBuilder::buildCfgMsg(
       UBX_CLASS_NAV, UBX_ID_NAV_POSLLH, 1U,
@@ -559,7 +559,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     serial.write(txBuf, txLen);
     serial.flush();
     if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_MSG, ACK_TIMEOUT_MS)) {
-      return UbxConfigStatus::ERR_MSG_FAILED;
+      return GnssConfigStatus::ERR_MSG_FAILED;
     }
     delay(POST_CMD_DELAY_MS);
 
@@ -569,7 +569,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     serial.write(txBuf, txLen);
     serial.flush();
     if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_MSG, ACK_TIMEOUT_MS)) {
-      return UbxConfigStatus::ERR_MSG_FAILED;
+      return GnssConfigStatus::ERR_MSG_FAILED;
     }
     delay(POST_CMD_DELAY_MS);
 
@@ -579,7 +579,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     serial.write(txBuf, txLen);
     serial.flush();
     if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_MSG, ACK_TIMEOUT_MS)) {
-      return UbxConfigStatus::ERR_MSG_FAILED;
+      return GnssConfigStatus::ERR_MSG_FAILED;
     }
     delay(POST_CMD_DELAY_MS);
 
@@ -590,7 +590,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     serial.write(txBuf, txLen);
     serial.flush();
     if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_MSG, ACK_TIMEOUT_MS)) {
-      return UbxConfigStatus::ERR_MSG_FAILED;
+      return GnssConfigStatus::ERR_MSG_FAILED;
     }
     delay(POST_CMD_DELAY_MS);
 
@@ -602,7 +602,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
     serial.write(txBuf, txLen);
     serial.flush();
     if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_MSG, ACK_TIMEOUT_MS)) {
-      return UbxConfigStatus::ERR_MSG_FAILED;
+      return GnssConfigStatus::ERR_MSG_FAILED;
     }
     delay(POST_CMD_DELAY_MS);
   }
@@ -613,7 +613,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
   serial.write(txBuf, txLen);
   serial.flush();
   if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_CFG, SAVE_TIMEOUT_MS)) {
-    return UbxConfigStatus::ERR_SAVE_FAILED;
+    return GnssConfigStatus::ERR_SAVE_FAILED;
   }
   delay(POST_CMD_DELAY_MS);
 
@@ -633,7 +633,7 @@ UbxConfigStatus UbxConfigurator::configureLegacy(HardwareSerial& serial)
  *          frame assembly error), ERR_PROTO_FINAL_FAILED is returned before any
  *          bytes are sent to the module.
  */
-UbxConfigStatus UbxConfigurator::configureValset(HardwareSerial& serial)
+GnssConfigStatus UbxConfigurator::configureValset(HardwareSerial& serial)
 {
   uint8_t  txBuf[UbxMessageBuilder::MAX_TX_FRAME];
   uint8_t  kvBuf[UBX_CFGVALSET_MAX_KV_LEN];
@@ -655,12 +655,12 @@ UbxConfigStatus UbxConfigurator::configureValset(HardwareSerial& serial)
     UBX_VALSET_LAYER_ALL, kvBuf, kvPos,
     txBuf, static_cast<uint16_t>(sizeof(txBuf)));
 
-  if (txLen == 0U) { return UbxConfigStatus::ERR_PROTO_FINAL_FAILED; }
+  if (txLen == 0U) { return GnssConfigStatus::ERR_PROTO_FINAL_FAILED; }
 
   serial.write(txBuf, txLen);
   serial.flush();
   if (!waitForAck(serial, UBX_CLASS_CFG, UBX_ID_CFG_VALSET, ACK_TIMEOUT_MS)) {
-    return UbxConfigStatus::ERR_PROTO_FINAL_FAILED;
+    return GnssConfigStatus::ERR_PROTO_FINAL_FAILED;
   }
   delay(POST_CMD_DELAY_MS);
 
@@ -679,7 +679,7 @@ UbxConfigStatus UbxConfigurator::configureValset(HardwareSerial& serial)
  *          since configureLegacy() may have accepted the 1 Hz fallback.
  *          Both fields are read using memcpy to avoid aliasing undefined behaviour.
  */
-UbxConfigStatus UbxConfigurator::validateLegacy(HardwareSerial& serial)
+GnssConfigStatus UbxConfigurator::validateLegacy(HardwareSerial& serial)
 {
   uint8_t  txBuf[UbxMessageBuilder::MAX_TX_FRAME];
   uint8_t  rxBuf[64];
@@ -702,7 +702,7 @@ UbxConfigStatus UbxConfigurator::validateLegacy(HardwareSerial& serial)
     ACK_TIMEOUT_MS);
 
   if (rxLen < static_cast<uint16_t>(6U + UBX_CFGPRT_PAYLOAD_LEN)) {
-    return UbxConfigStatus::ERR_VALIDATION_FAILED;
+    return GnssConfigStatus::ERR_VALIDATION_FAILED;
   }
 
   // payload[14..15] = outProtoMask (U2 LE)
@@ -715,7 +715,7 @@ UbxConfigStatus UbxConfigurator::validateLegacy(HardwareSerial& serial)
   (void)memcpy(&baud, &rxBuf[6U + 8U], 4U);
 
   if ((outProto != UBX_PROTO_MASK_UBX) || (baud != TARGET_BAUD_RATE)) {
-    return UbxConfigStatus::ERR_VALIDATION_FAILED;
+    return GnssConfigStatus::ERR_VALIDATION_FAILED;
   }
 
   // -------------------------------------------------------------------------
@@ -737,7 +737,7 @@ UbxConfigStatus UbxConfigurator::validateLegacy(HardwareSerial& serial)
     ACK_TIMEOUT_MS);
 
   if (rxLen < static_cast<uint16_t>(6U + UBX_CFGRATE_PAYLOAD_LEN)) {
-    return UbxConfigStatus::ERR_VALIDATION_FAILED;
+    return GnssConfigStatus::ERR_VALIDATION_FAILED;
   }
 
   // payload[0..1] = measRate in milliseconds (U2 LE)
@@ -747,10 +747,10 @@ UbxConfigStatus UbxConfigurator::validateLegacy(HardwareSerial& serial)
   const bool rateOk = (measRate == TARGET_MEAS_RATE_MS) ||
                       (measRate == FALLBACK_RATE_MS);
   if (!rateOk) {
-    return UbxConfigStatus::ERR_VALIDATION_FAILED;
+    return GnssConfigStatus::ERR_VALIDATION_FAILED;
   }
 
-  return UbxConfigStatus::OK;
+  return GnssConfigStatus::OK;
 }
 
 /**
@@ -760,7 +760,7 @@ UbxConfigStatus UbxConfigurator::validateLegacy(HardwareSerial& serial)
  *          are skipped using the size code encoded in bits [31:28] of the key ID.
  *          FALLBACK_RATE_MS is accepted alongside TARGET_MEAS_RATE_MS for the rate key.
  */
-UbxConfigStatus UbxConfigurator::validateValset(HardwareSerial& serial)
+GnssConfigStatus UbxConfigurator::validateValset(HardwareSerial& serial)
 {
   uint8_t  txBuf[UbxMessageBuilder::MAX_TX_FRAME];
   uint8_t  rxBuf[64];
@@ -788,7 +788,7 @@ UbxConfigStatus UbxConfigurator::validateValset(HardwareSerial& serial)
 
   // Minimum: 6-byte frame header + 4-byte CFG-VALGET header + one U4 key + U4 value
   if (rxLen < static_cast<uint16_t>(6U + UBX_CFGVAL_HDR_LEN + 8U)) {
-    return UbxConfigStatus::ERR_VALIDATION_FAILED;
+    return GnssConfigStatus::ERR_VALIDATION_FAILED;
   }
 
   const uint8_t* payload = rxBuf + 6U;
@@ -842,6 +842,6 @@ UbxConfigStatus UbxConfigurator::validateValset(HardwareSerial& serial)
   }
 
   return (baudOk && outprotOk && rateOk)
-    ? UbxConfigStatus::OK
-    : UbxConfigStatus::ERR_VALIDATION_FAILED;
+    ? GnssConfigStatus::OK
+    : GnssConfigStatus::ERR_VALIDATION_FAILED;
 }

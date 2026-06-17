@@ -80,7 +80,7 @@
 
 #include <Arduino.h>
 #include <assert.h>
-#include "GpsProvider.hpp"
+#include "GnssTypes.hpp"
 #include "UbxParser.hpp"
 #include "UbxConfigurator.hpp"
 
@@ -93,7 +93,7 @@ public:
    *          default.  A specific generation must be supplied when using beginPassive().
    * @param generation Hardware generation of the connected module; defaults to UNKNOWN.
    */
-  explicit UbxGNSS(GpsProvider generation = GpsProvider::UNKNOWN);
+  explicit UbxGNSS(UbxSeries generation = UbxSeries::UNKNOWN);
 
   /**
    * @brief Full mode: runs the configurator then initialises the parser.
@@ -174,13 +174,13 @@ public:
  *          this reflects the generation detected via MON-VER, not UNKNOWN 
  *          otherwise it reflects the values passed to the constructor.
  */
-GpsProvider getActiveProvider() const;
+UbxSeries getActiveProvider() const;
 
 /**
  * @brief Returns the hardware generation detected from the MON-VER probe.
  * @details This reflects the generation detected via MON-VER.
  */
-GpsProvider getDetectedProvider() const;
+UbxSeries getDetectedProvider() const;
 
   /**
    * @brief Returns the result struct from the most recent full-mode configuration attempt.
@@ -192,6 +192,6 @@ GpsProvider getDetectedProvider() const;
 private:
   UbxParser       m_parser;          ///< Concrete UBX frame parser instance (held by value).
   UbxConfigResult m_configureResult; ///< Result from the most recent begin() call.
-  GpsProvider     m_generation;      ///< Generation set at construction; may be updated by begin().
+  UbxSeries     m_generation;      ///< Generation set at construction; may be updated by begin().
   bool            m_configured;      ///< true after a successful begin() or any beginPassive() call.
 };

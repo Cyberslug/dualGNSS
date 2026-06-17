@@ -99,20 +99,21 @@ void loop()
 
   if (gnss.hasNewData() && (count < 10U)) {
     if (gnss.isFixValid()) {
-      CrsfGpsPayload p;
-      gnss.getPayload(p);
+      GnssData d;
+      gnss.getData(d);
 
-      Serial.printf("Lat %10.7f  Lon %11.7f  Alt %5dm  "
-                    "Spd %5.1f km/h  Hdg %6.2f°  Sats %u\n",
-                    p.latitude    / 1.0e7,
-                    p.longitude   / 1.0e7,
-                    static_cast<int>(p.altitude) - 1000,
-                    p.groundspeed / 100.0,
-                    p.heading     / 100.0,
-                    static_cast<unsigned>(p.satellites));
+      Serial.printf("Lat %10.7f  Lon %11.7f  Alt %5.3f m  "
+                    "Spd %5.1f km/h  Hdg %6.2f°  Sats %u ",
+                    d.latitude    / 1.0e7,
+                    d.longitude   / 1.0e7,
+                    d.altMSL      / 1000.0,
+                    d.gSpeed      * 0.0036,
+                    d.headMot     / 1.0e5,
+                    static_cast<unsigned>(d.satellites));
+      Serial.printf("Raw Alt %d\n", d.altMSL);
+      count++;
     } else {
       Serial.println("Waiting for fix...");
     }
-    count++;
   }
 }

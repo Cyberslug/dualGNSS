@@ -12,8 +12,7 @@ GpsProvider	KEYWORD1
 CrsfGpsPayload	KEYWORD1
 UbxConfigResult	KEYWORD1
 CasicConfigResult	KEYWORD1
-UbxConfigStatus	KEYWORD1
-CasicConfigStatus	KEYWORD1
+GnssConfigStatus	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2 — brown)

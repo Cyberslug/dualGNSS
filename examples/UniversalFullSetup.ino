@@ -35,19 +35,41 @@
 */
 
 #include <Arduino.h>
-#include <UbxGNSS.hpp>
+#include <dualGNSS.hpp>
 
 static constexpr int8_t RX_PIN = 11;
 static constexpr int8_t TX_PIN = 12;
+static constexpr GnssType TYPE = GnssType::CASIC;
+static constexpr UbxSeries GENERATION = UbxSeries::UBX_M9_PLUS;
+
+class GnssDriver
+{
+  public:
+    bool  begin(HardwareSerial& serial, int8_t rxPin, int8_t txPin)
+                { return m_gnss.begin(serial, rxPin, txPin);       }
+    void  beginPassive(HardwareSerial& serial, int8_t rxPin, int8_t txPin,
+                    uint32_t baud = UbxConfigurator::TARGET_BAUD_RATE)
+                    {m_gnss.beginPassive(serial, rxPin, txPin, baud);}
+    void  update()       { m_gnss.update();      }
+    bool  hasNewData()   { return m_gnss.hasNewData();  }
+    bool  isFixValid()   { return m_gnss.isFixValid();  }
+    void  getData(GnssData& dest)   { m_gnss.getData(dest);  }
+    GnssConfigResult getConfigResult() { return m_gnss.getConfigResult(); }
+
+  private:
+    // One line. Config drives both the module type and the protocol version.
+    // If GNSS_TYPE is CASIC the second argument is accepted but unused.
+    Gnss<TYPE, GENERATION> m_gnss;  // Configured external to the class
+};
+
+
+
 
 // ---------------------------------------------------------------------------
-// Global object — initialise with the known hardware generation.
-// Change to UBX_M6_MINUS or UBX_M7_M8 if your module is not M9/M10.
-// Omit the argument entirely (UbxGNSS gnss;) to let begin() auto-detect
-// the generation via MON-VER.
+// Global object — type and generation selected by constants in configuration data
 // ---------------------------------------------------------------------------
 
-UbxGNSS gnss(UbxSeries::UBX_M9_PLUS);
+GnssDriver gnss;
 
 /**
  * @brief Arduino entry point — runs once at power-on or after reset.
@@ -81,16 +103,36 @@ void setup()
 
   // Full configuration: sweep baud rates, identify module, apply settings.
   if (!gnss.begin(Serial1, RX_PIN, TX_PIN)) {
-    const UbxConfigResult& r = gnss.ubxConfigResult();
-    Serial.printf("Configuration failed  status=%u  protocolVersion=%u\n",
-                  static_cast<unsigned>(r.status),
-                  static_cast<unsigned>(r.protocolVersion));
+    const GnssConfigResult& r = gnss.getConfigResult();
+    switch (TYPE){
+      case GnssType::UBX:
+        Serial.printf("Configuration failed  status=%u  protocolVersion=%u\n",
+                      static_cast<unsigned>(r.status),
+                      static_cast<unsigned>(r.protocolVersion));
+        break;
+      case GnssType::CASIC:
+        Serial.printf("Configuration failed status=%u\n", static_cast<unsigned>(r.status));
+        break;
+      default:
+        break;
+    }
     while (true) {}  // Halt — inspect Serial monitor for details.
   }
-
-  Serial.printf("Configuration OK  generation=%u  protocolVersion=%u\n",
-                static_cast<unsigned>(gnss.getDetectedProvider()),
-                static_cast<unsigned>(gnss.ubxConfigResult().protocolVersion));
+  
+  const GnssConfigResult& r = gnss.getConfigResult();
+  switch (TYPE){
+    case GnssType::UBX:
+      Serial.printf("Configuration OK  generation=%u  protocolVersion=%u\n",
+                    static_cast<unsigned>(r.detectedProvider),
+                    static_cast<unsigned>(r.protocolVersion));
+      break;
+      case GnssType::CASIC:
+      Serial.printf("Configuration OK  status=%u\n",
+                    static_cast<unsigned>(r.status));
+      break;
+    default:
+      break;
+  }
 }
 
 /**

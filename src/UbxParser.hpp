@@ -19,7 +19,7 @@
 
 #include <Arduino.h>
 #include "GnssParserBase.hpp"
-#include "GpsProvider.hpp"
+#include "GnssTypes.hpp"
 #include "UbxConstants.hpp"
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ public:
    * @param serial     Reference to an already-open HardwareSerial port.
    * @param generation Hardware generation of the connected module.
    */
-  void begin(HardwareSerial& serial, GpsProvider generation);
+  void begin(HardwareSerial& serial, UbxSeries generation);
 
   /**
    * @brief Reads available bytes and advances the UBX frame parser state machine.
@@ -174,7 +174,7 @@ private:
   // -------------------------------------------------------------------------
   // UBX frame state
   // -------------------------------------------------------------------------
-  GpsProvider m_generation;              ///< Active sub-protocol: M6_MINUS, M7_M8, or M9_PLUS.
+  UbxSeries m_generation;              ///< Active sub-protocol: M6_MINUS, M7_M8, or M9_PLUS.
   UbxState    m_state;                   ///< Current state of the byte-level frame parser.
   uint8_t     m_class;                   ///< Message class byte of the frame under assembly.
   uint8_t     m_id;                      ///< Message ID byte of the frame under assembly.

@@ -165,3 +165,101 @@ struct GnssData {
   uint8_t  second;        ///< UTC second, range 0–60 (60 during a positive leap second).
   uint16_t millisecond;   ///< UTC sub-second in ms, range 0–999.
 };
+
+
+/**
+ * @enum GnssType
+ * @brief Gnss selector for dualGNSS.
+ */
+enum class GnssType : uint8_t
+{
+    NONE   = 0U,
+    CASIC  = 1U,
+    UBX    = 2U
+};
+
+
+enum class GnssConfigStatus : uint8_t
+{
+    OK = 0U,                  ///< Configuration completed successfully.
+    ERR_BAUD_NOT_FOUND,       ///< Module did not respond after baud-rate sweep.
+    ERR_PROTO_FINAL_FAILED,   ///< Final protocol mask was rejected.
+    ERR_RATE_FAILED,          ///< Navigation rate was rejected.
+    ERR_MSG_FAILED,           ///< Message enable was rejected.
+    ERR_SAVE_FAILED,          ///< Save to flash was rejected.
+    ERR_VALIDATION_FAILED,    ///< Post-configuration readback did not match targets.
+};
+
+// ---------------------------------------------------------------------------
+// UbxSeries
+//
+// Identifies the hardware generation of the connected u-blox GNSS module.
+// Passed to the UbxGNSS constructor so that both the configurator and the
+// parser can be directed to the correct command / message set without any
+// run-time auto-detection.
+//
+// Generation mapping
+// ------------------
+//   UBX_M6_MINUS  — u-blox M6 and below
+//                   Configurator: legacy CFG-PRT / CFG-RATE / CFG-MSG / CFG-CFG
+//                   Parser:       NAV-POSLLH + NAV-SOL + NAV-VELNED epoch assembly
+//
+//   UBX_M7_M8     — u-blox M7 / M8  (protocol versions 15 – 23)
+//                   Configurator: legacy CFG-PRT / CFG-RATE / CFG-MSG / CFG-CFG
+//                   Parser:       NAV-PVT
+//
+//   UBX_M9_PLUS   — u-blox M9 / M10 (protocol versions >= 24)
+//                   Configurator: CFG-VALSET / CFG-VALGET
+//                   Parser:       NAV-PVT
+//
+//   UNKNOWN       — auto-detect via MON-VER during begin() only.
+//                   Not valid for beginPassive() — an assertion fires at
+//                   run-time if beginPassive() is called with UNKNOWN.
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Hardware generation selector for u-blox GNSS modules.
+ *
+ * @details Pass the appropriate enumerator to the UbxGNSS constructor so the
+ * library can select the correct configurator path and parser message set at
+ * compile time rather than probing the module at run time.  UNKNOWN is the
+ * only value that triggers run-time detection via MON-VER; it is not permitted
+ * when calling UbxGNSS::beginPassive().
+ */
+enum class UbxSeries : uint8_t {
+  UBX_M6_MINUS = 0U,  ///< u-blox M6 and below  — legacy CFG, triple-message epoch
+  UBX_M7_M8    = 1U,  ///< u-blox M7 / M8       — legacy CFG, NAV-PVT
+  UBX_M9_PLUS  = 2U,  ///< u-blox M9 / M10      — valset CFG, NAV-PVT
+  UNKNOWN      = 3U   ///< Auto-detect in begin(); invalid for beginPassive()
+};
+
+/**
+* @struct GnssConfigResult
+* @brief  Unified configuration result returned by Gnss<>::configure().
+*
+* Common fields are populated regardless of module type.
+* Protocol-specific fields are zeroed when the other module is selected;
+* comments identify which fields belong to which protocol.
+*/
+struct GnssConfigResult
+{
+    // ------------------------------------------------------------------
+    // Common fields — always populated
+    // ------------------------------------------------------------------
+    GnssConfigStatus status;           ///< Overall outcome of configuration.
+    uint32_t         detectedBaud;     ///< TARGET_BAUD_RATE on success, 0 on failure.
+    bool             validationPassed; ///< true if post-configuration readback passed.
+
+    // ------------------------------------------------------------------
+    // UBX-specific — zeroed when CASIC is selected
+    // ------------------------------------------------------------------
+    UbxSeries        detectedProvider; ///< Resolved hardware generation. UBX only.
+    uint8_t          protocolVersion;  ///< MON-VER protocol version. UBX only.
+
+    // ------------------------------------------------------------------
+    // CASIC-specific — zeroed when UBX is selected
+    // ------------------------------------------------------------------
+    uint8_t          observedProtoMask;   ///< Protocol mask from CFG-PRT.  CASIC only.
+    uint16_t         observedIntervalMs;  ///< Nav interval from CFG-RATE.  CASIC only.
+    uint32_t         observedBaudRate;    ///< Baud rate from CFG-PRT.      CASIC only.
+};

@@ -52,7 +52,7 @@ bool CasicGNSS::begin(HardwareSerial& serial, int8_t rxPin, int8_t txPin)
   CasicConfigurator cfg;
   m_configureResult = cfg.configure(serial, rxPin, txPin);
 
-  if (m_configureResult.status != CasicConfigStatus::OK) {
+  if (m_configureResult.status != GnssConfigStatus::OK) {
     return false;
   }
 
