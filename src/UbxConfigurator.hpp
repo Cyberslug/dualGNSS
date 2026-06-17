@@ -71,26 +71,9 @@
 // ---------------------------------------------------------------------------
 
 #include <Arduino.h>
-#include "GpsProvider.hpp"
+#include "GnssTypes.hpp"
 #include "UbxConstants.hpp"
 #include "UbxMessageBuilder.hpp"
-
-// ---------------------------------------------------------------------------
-// UbxConfigStatus — result codes returned by configure()
-// ---------------------------------------------------------------------------
-
-/**
- * @brief Result codes returned by UbxConfigurator::configure().
- */
-enum class UbxConfigStatus : uint8_t {
-  OK                   = 0U,  ///< Configuration completed successfully.
-  ERR_BAUD_NOT_FOUND,         ///< Module did not respond to MON-VER after the sweep.
-  ERR_PROTO_FINAL_FAILED,     ///< IO protocol configuration was rejected by the module.
-  ERR_RATE_FAILED,            ///< Navigation rate configuration was rejected.
-  ERR_MSG_FAILED,             ///< Message output enable was rejected.
-  ERR_SAVE_FAILED,            ///< CFG-CFG / CFG-VALSET save step was rejected.
-  ERR_VALIDATION_FAILED,      ///< Post-configuration readback did not match targets.
-};
 
 // ---------------------------------------------------------------------------
 // UbxConfigResult — diagnostic information returned by configure()
@@ -103,8 +86,8 @@ enum class UbxConfigStatus : uint8_t {
  *          and validationPassed is true.
  */
 struct UbxConfigResult {
-  UbxConfigStatus  status;           ///< Overall outcome of the configuration attempt.
-  GpsProvider      detectedProvider; ///< Resolved hardware generation; never UNKNOWN on return.
+  GnssConfigStatus status;           ///< Overall outcome of the configuration attempt.
+  UbxSeries        detectedProvider; ///< Resolved hardware generation; never UNKNOWN on return.
   uint32_t         detectedBaud;     ///< TARGET_BAUD_RATE on success, 0 on failure.
   uint8_t          protocolVersion;  ///< Protocol version from MON-VER; 0 if not parsed.
   bool             validationPassed; ///< true if the post-configuration readback succeeded.
@@ -135,7 +118,7 @@ public:
    *         version.  detectedProvider is never UNKNOWN on return.
    */
   UbxConfigResult configure(HardwareSerial& serial, int8_t rxPin, int8_t txPin,
-                             GpsProvider generation = GpsProvider::UNKNOWN);
+                             UbxSeries generation = UbxSeries::UNKNOWN);
 
   // Public constants used by external components (e.g. test helpers).
   static constexpr uint32_t TARGET_BAUD_RATE    = 115200UL; ///< Target baud rate after configuration.
@@ -148,7 +131,7 @@ private:
   int8_t      m_rxPin;           ///< MCU RX pin, stored from configure() for use by openSerial().
   int8_t      m_txPin;           ///< MCU TX pin, stored from configure() for use by openSerial().
   uint8_t     m_protocolVersion; ///< UBX protocol version read from MON-VER in Phase 1.
-  GpsProvider m_generation;      ///< Resolved generation used throughout the configure() call.
+  UbxSeries m_generation;      ///< Resolved generation used throughout the configure() call.
 
   // Baud-rate candidates visited during the Phase 0 sweep (in order).
   static const uint32_t    BAUD_CANDIDATES[];
@@ -268,9 +251,9 @@ private:
    *          then CFG-CFG to save all settings to non-volatile storage.
    *          Calls validateLegacy() to confirm success.
    * @param serial Reference to the open HardwareSerial port.
-   * @return UbxConfigStatus::OK on success, or an error code identifying the failing step.
+   * @return GnssConfigStatus::OK on success, or an error code identifying the failing step.
    */
-  UbxConfigStatus configureLegacy(HardwareSerial& serial);
+  GnssConfigStatus configureLegacy(HardwareSerial& serial);
 
   /**
    * @brief Configures M9 / M10 modules using a single CFG-VALSET command.
@@ -278,9 +261,9 @@ private:
    *          all storage layers (RAM + BBR + Flash) in one atomic transaction.
    *          Calls validateValset() to confirm success.
    * @param serial Reference to the open HardwareSerial port.
-   * @return UbxConfigStatus::OK on success, or an error code identifying the failing step.
+   * @return GnssConfigStatus::OK on success, or an error code identifying the failing step.
    */
-  UbxConfigStatus configureValset(HardwareSerial& serial);
+  GnssConfigStatus configureValset(HardwareSerial& serial);
 
   /**
    * @brief Reads back CFG-PRT and CFG-RATE to verify legacy configuration targets.
@@ -288,9 +271,9 @@ private:
    *          TARGET_BAUD_RATE.  Accepts both TARGET_MEAS_RATE_MS and FALLBACK_RATE_MS
    *          as valid navigation rates, since configureLegacy() may fall back to 1 Hz.
    * @param serial Reference to the open HardwareSerial port.
-   * @return UbxConfigStatus::OK if targets match, ERR_VALIDATION_FAILED otherwise.
+   * @return GnssConfigStatus::OK if targets match, ERR_VALIDATION_FAILED otherwise.
    */
-  static UbxConfigStatus validateLegacy(HardwareSerial& serial);
+  static GnssConfigStatus validateLegacy(HardwareSerial& serial);
 
   /**
    * @brief Reads back key configuration values to verify the valset configuration.
@@ -298,7 +281,7 @@ private:
    *          UBXKEY_RATE_MEAS from RAM via CFG-VALGET and compares each against its
    *          target.  Accepts TARGET_MEAS_RATE_MS or FALLBACK_RATE_MS for the rate.
    * @param serial Reference to the open HardwareSerial port.
-   * @return UbxConfigStatus::OK if all keys match, ERR_VALIDATION_FAILED otherwise.
+   * @return GnssConfigStatus::OK if all keys match, ERR_VALIDATION_FAILED otherwise.
    */
-  static UbxConfigStatus validateValset(HardwareSerial& serial);
+  static GnssConfigStatus validateValset(HardwareSerial& serial);
 };

@@ -4,7 +4,9 @@ Arduino library for **CASIC** and **u-blox M6–M10** GNSS modules on ESP32.
 Provides auto-baud detection, complete module configuration, and binary
 protocol parsing through two separate concrete classes — **`UbxGNSS`** and
 **`CasicGNSS`** — so that a project using only one protocol never links any
-object code from the other.
+object code from the other. Note that a combined or Universal GNSS interface
+has been added so that unified code for either module type can be written
+see the UniversalFullSetup.ino example
 
 > **ESP32 only.**  The library uses the four-argument
 > `HardwareSerial::begin(baud, config, rxPin, txPin)` overload specific to
@@ -16,6 +18,7 @@ object code from the other.
 
 | File | Purpose |
 |------|---------|
+| `dualGNSS.hpp` | Primary interface to the library provides a template class for a universal GNSS interface |
 | `GnssParserBase.hpp/.cpp` | Shared base: output state, read interface, LE field accessors |
 | `UbxParser.hpp/.cpp` | UBX frame parser (M6- epoch assembly; M7/M8/M9/M10 NAV-PVT) |
 | `CasicParser.hpp/.cpp` | CASIC frame parser (NAV-PV, NAV-TIMEUTC) |
@@ -64,7 +67,15 @@ object code from the other.
          │  begin()         │                   │  begin()        │
          │  beginPassive()  │                   │  beginPassive() │
          │  update() ...    │                   │  update() ...   │
-         └──────────────────┘                   └─────────────────┘
+         └─────────┬────────┘                   └────────┬────────┘
+                   │                                     │
+                   └──────────────────┬──────────────────┘
+                            ┌─────────┴────────┐
+                            │       Gnss       │
+                            │  begin()         │
+                            │  beginPassive()  │
+                            │  update() ...    │
+                            └──────────────────┘
 ```
 
 `UbxConfigurator` and `CasicConfigurator` are instantiated on the stack
@@ -77,9 +88,9 @@ includes only `UbxGNSS.hpp` will never link `CasicParser.cpp` or
 
 ---
 
-## GpsProvider
+## UbsSeries
 
-`GpsProvider` is passed to the `UbxGNSS` constructor to declare the
+`UbxSeries` is passed to the `UbxGNSS` constructor to declare the
 hardware generation.  The library uses this to select the correct
 configuration path and message parser without probing the module at
 run time.  `UNKNOWN` triggers automatic detection via MON-VER during
@@ -93,7 +104,7 @@ run time.  `UNKNOWN` triggers automatic detection via MON-VER during
 | `UNKNOWN` | Any — auto-detect | Resolved via MON-VER in `begin()` | Resolved at run time |
 
 `UNKNOWN` is **not valid** for `beginPassive()` — pass a specific generation
-to the constructor when using passive mode.  `GpsProvider` is not used by
+to the constructor when using passive mode.  `UbxSeries` is not used by
 `CasicGNSS`.
 
 ---

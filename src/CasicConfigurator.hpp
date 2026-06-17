@@ -73,25 +73,9 @@
 // ---------------------------------------------------------------------------
 
 #include <Arduino.h>
+#include "GnssTypes.hpp"
 #include "CasicConstants.hpp"
 #include "CasicMessageBuilder.hpp"
-
-// ---------------------------------------------------------------------------
-// CasicConfigStatus — result codes returned by configure()
-// ---------------------------------------------------------------------------
-
-/**
- * @brief Result codes returned by CasicConfigurator::configure().
- */
-enum class CasicConfigStatus : uint8_t {
-  OK                  = 0U,  ///< Configuration completed successfully.
-  ERR_BAUD_NOT_FOUND,        ///< Module did not respond after the baud-rate sweep.
-  ERR_PROTO_FINAL_FAILED,    ///< CFG-PRT final protocol mask was rejected.
-  ERR_RATE_FAILED,           ///< CFG-RATE navigation rate was rejected.
-  ERR_MSG_FAILED,            ///< CFG-MSG NAV-PV enable was rejected.
-  ERR_SAVE_FAILED,           ///< CFG-CFG save to flash was rejected.
-  ERR_VALIDATION_FAILED,     ///< Post-configuration readback did not match targets.
-};
 
 // ---------------------------------------------------------------------------
 // CasicConfigResult — diagnostic information returned by configure()
@@ -104,7 +88,7 @@ enum class CasicConfigStatus : uint8_t {
  *          read back from the module during Phase 3.
  */
 struct CasicConfigResult {
-  CasicConfigStatus status;            ///< Overall outcome of the configuration attempt.
+  GnssConfigStatus status;            ///< Overall outcome of the configuration attempt.
   uint32_t          detectedBaud;      ///< TARGET_BAUD_RATE on success, 0 on failure.
   bool              validationPassed;  ///< true if Phase 3 validation passed.
   uint8_t           observedProtoMask; ///< Protocol mask read back from CFG-PRT in Phase 3.

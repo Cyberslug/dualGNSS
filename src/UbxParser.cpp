@@ -29,7 +29,7 @@
  */
 UbxParser::UbxParser()
   : GnssParserBase()
-  , m_generation(GpsProvider::UNKNOWN)
+  , m_generation(UbxSeries::UNKNOWN)
   , m_state(UbxState::SYNC1)
   , m_class(0U)
   , m_id(0U)
@@ -66,7 +66,7 @@ UbxParser::UbxParser()
  * @param serial     Reference to an already-open HardwareSerial port.
  * @param generation Hardware generation of the connected module (not UNKNOWN).
  */
-void UbxParser::begin(HardwareSerial& serial, GpsProvider generation)
+void UbxParser::begin(HardwareSerial& serial, UbxSeries generation)
 {
   m_serial     = &serial;
   m_generation = generation;
@@ -268,7 +268,7 @@ void UbxParser::onFrame()
     return;
   }
 
-  if (m_generation != GpsProvider::UBX_M6_MINUS) {
+  if (m_generation != UbxSeries::UBX_M6_MINUS) {
     // M7/M8 and M9/M10 all use NAV-PVT.
     if ((m_id == UBX_ID_NAV_PVT) && (m_payloadLen == UBX_NAVPVT_PAYLOAD_LEN)) {
       processM7Pvt();

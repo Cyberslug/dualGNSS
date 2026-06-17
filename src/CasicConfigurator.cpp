@@ -16,6 +16,7 @@
 */
 
 #include "CasicConfigurator.hpp"
+#include "GnssTypes.hpp"
 #include <string.h>
 
 // ---------------------------------------------------------------------------
@@ -52,7 +53,7 @@ CasicConfigResult CasicConfigurator::configure(HardwareSerial& serial,
   m_txPin = txPin;
 
   CasicConfigResult result{};
-  result.status             = CasicConfigStatus::ERR_BAUD_NOT_FOUND;
+  result.status             = GnssConfigStatus::ERR_BAUD_NOT_FOUND;
   result.detectedBaud       = 0UL;
   result.validationPassed   = false;
   result.observedProtoMask  = 0U;
@@ -71,27 +72,27 @@ CasicConfigResult CasicConfigurator::configure(HardwareSerial& serial,
 
   // Phase 2: apply configuration steps with ACK verification.
   if (!cfgPrtFinalProtocol(serial)) {
-    result.status = CasicConfigStatus::ERR_PROTO_FINAL_FAILED;
+    result.status = GnssConfigStatus::ERR_PROTO_FINAL_FAILED;
     return result;
   }
 
   if (!cfgRate(serial, TARGET_INTERVAL_MS)) {
-    result.status = CasicConfigStatus::ERR_RATE_FAILED;
+    result.status = GnssConfigStatus::ERR_RATE_FAILED;
     return result;
   }
 
   if (!cfgMsgNavPv(serial, TARGET_NAV_PV_RATE)) {
-    result.status = CasicConfigStatus::ERR_MSG_FAILED;
+    result.status = GnssConfigStatus::ERR_MSG_FAILED;
     return result;
   }
 
   if (!cfgMsgNavTimeUtc(serial, TARGET_NAV_PV_RATE)) {
-    result.status = CasicConfigStatus::ERR_MSG_FAILED;
+    result.status = GnssConfigStatus::ERR_MSG_FAILED;
     return result;
   }
 
   if (!cfgCfgSave(serial)) {
-    result.status = CasicConfigStatus::ERR_SAVE_FAILED;
+    result.status = GnssConfigStatus::ERR_SAVE_FAILED;
     return result;
   }
 
@@ -99,8 +100,8 @@ CasicConfigResult CasicConfigurator::configure(HardwareSerial& serial,
   // so the caller can inspect what the module actually reported.
   result.validationPassed = validateConfig(serial, result);
   result.status = result.validationPassed
-    ? CasicConfigStatus::OK
-    : CasicConfigStatus::ERR_VALIDATION_FAILED;
+    ? GnssConfigStatus::OK
+    : GnssConfigStatus::ERR_VALIDATION_FAILED;
 
   return result;
 }

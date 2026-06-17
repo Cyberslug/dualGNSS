@@ -27,7 +27,7 @@
  *          configure() call.  When UNKNOWN, begin() will update m_generation with the
  *          value detected by the configurator via MON-VER.
  */
-UbxGNSS::UbxGNSS(GpsProvider generation)
+UbxGNSS::UbxGNSS(UbxSeries generation)
   : m_parser()
   , m_configureResult{}
   , m_generation(generation)
@@ -56,13 +56,13 @@ bool UbxGNSS::begin(HardwareSerial& serial, int8_t rxPin, int8_t txPin)
   UbxConfigurator cfg;
   m_configureResult = cfg.configure(serial, rxPin, txPin, m_generation);
 
-  if (m_configureResult.status != UbxConfigStatus::OK) {
+  if (m_configureResult.status != GnssConfigStatus::OK) {
     return false;
   }
 
   // If UNKNOWN was used at construction, adopt the generation the configurator
   // detected via MON-VER so it is available via getDetectedProvider().
-  if (m_generation == GpsProvider::UNKNOWN) {
+  if (m_generation == UbxSeries::UNKNOWN) {
     m_generation = m_configureResult.detectedProvider;
   }
 
@@ -92,7 +92,7 @@ void UbxGNSS::beginPassive(HardwareSerial& serial, int8_t rxPin, int8_t txPin,
   // message set to expect without running the full configurator.
   // Pass GpsProvider::UBX_M6_MINUS, UBX_M7_M8, or UBX_M9_PLUS to the
   // UbxGNSS constructor before calling beginPassive().
-  assert((m_generation != GpsProvider::UNKNOWN) &&
+  assert((m_generation != UbxSeries::UNKNOWN) &&
          "UbxGNSS::beginPassive() requires a specific GpsProvider — "
          "pass UBX_M6_MINUS, UBX_M7_M8, or UBX_M9_PLUS to the constructor");
 
@@ -175,7 +175,7 @@ bool UbxGNSS::isConfigured() const
  *          this reflects the generation detected via MON-VER, not UNKNOWN 
  *          otherwise it reflects the values passed to the constructor.
  */
-GpsProvider UbxGNSS::getActiveProvider() const
+UbxSeries UbxGNSS::getActiveProvider() const
 {
   return m_generation;
 }
@@ -184,7 +184,7 @@ GpsProvider UbxGNSS::getActiveProvider() const
  * @brief Returns the hardware generation detected from the MON-VER probe.
  * @details This reflects the generation detected via MON-VER.
  */
-GpsProvider UbxGNSS::getDetectedProvider() const
+UbxSeries UbxGNSS::getDetectedProvider() const
 {
   return m_configureResult.detectedProvider;
 }
