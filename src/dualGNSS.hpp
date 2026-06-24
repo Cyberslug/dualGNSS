@@ -101,3 +101,21 @@ GnssConfigResult Gnss<GnssType::CASIC, TSeries>::getConfigResult()
     // detectedProvider, protocolVersion remain zero/default
     return result;
 }
+
+/**
+* @brief  NONE specialisation.
+*         ConfigurationResult translation
+*/
+template<UbxSeries TSeries>
+class Gnss<GnssType::NONE, TSeries>
+{
+  public:
+    bool  begin(HardwareSerial&, int8_t, int8_t)        { return false; }
+    void  beginPassive(HardwareSerial&, int8_t, int8_t,
+                       uint32_t = 0)                    {}
+    void  update()                                       {}
+    bool  hasNewData()                                   { return false; }
+    bool  isFixValid()                                   { return false; }
+    void  getData(GnssData&)                             {}
+    GnssConfigResult getConfigResult()                   { return {}; }
+};
