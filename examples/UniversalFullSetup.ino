@@ -39,28 +39,28 @@
 
 static constexpr int8_t RX_PIN = 11;
 static constexpr int8_t TX_PIN = 12;
-static constexpr GnssType TYPE = GnssType::CASIC;
+static constexpr GnssType TYPE = GnssType::UBX;
 static constexpr UbxSeries GENERATION = UbxSeries::UBX_M9_PLUS;
 
-class GnssDriver
-{
-  public:
-    bool  begin(HardwareSerial& serial, int8_t rxPin, int8_t txPin)
-                { return m_gnss.begin(serial, rxPin, txPin);       }
-    void  beginPassive(HardwareSerial& serial, int8_t rxPin, int8_t txPin,
-                    uint32_t baud = UbxConfigurator::TARGET_BAUD_RATE)
-                    {m_gnss.beginPassive(serial, rxPin, txPin, baud);}
-    void  update()       { m_gnss.update();      }
-    bool  hasNewData()   { return m_gnss.hasNewData();  }
-    bool  isFixValid()   { return m_gnss.isFixValid();  }
-    void  getData(GnssData& dest)   { m_gnss.getData(dest);  }
-    GnssConfigResult getConfigResult() { return m_gnss.getConfigResult(); }
+// class GnssDriver
+// {
+//   public:
+//     bool  begin(HardwareSerial& serial, int8_t rxPin, int8_t txPin)
+//                 { return m_gnss.begin(serial, rxPin, txPin);       }
+//     void  beginPassive(HardwareSerial& serial, int8_t rxPin, int8_t txPin,
+//                     uint32_t baud = UbxConfigurator::TARGET_BAUD_RATE)
+//                     {m_gnss.beginPassive(serial, rxPin, txPin, baud);}
+//     void  update()       { m_gnss.update();      }
+//     bool  hasNewData()   { return m_gnss.hasNewData();  }
+//     bool  isFixValid()   { return m_gnss.isFixValid();  }
+//     void  getData(GnssData& dest)   { m_gnss.getData(dest);  }
+//     GnssConfigResult getConfigResult() { return m_gnss.getConfigResult(); }
 
-  private:
-    // One line. Config drives both the module type and the protocol version.
-    // If GNSS_TYPE is CASIC the second argument is accepted but unused.
-    Gnss<TYPE, GENERATION> m_gnss;  // Configured external to the class
-};
+//   private:
+//     // One line. Config drives both the module type and the protocol version.
+//     // If GNSS_TYPE is CASIC the second argument is accepted but unused.
+//     Gnss<TYPE, GENERATION> m_gnss;  // Configured external to the class
+// };
 
 
 
@@ -69,7 +69,7 @@ class GnssDriver
 // Global object — type and generation selected by constants in configuration data
 // ---------------------------------------------------------------------------
 
-GnssDriver gnss;
+Gnss<TYPE, GENERATION> gnss;
 
 /**
  * @brief Arduino entry point — runs once at power-on or after reset.
