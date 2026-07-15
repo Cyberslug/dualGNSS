@@ -88,7 +88,7 @@ includes only `UbxGNSS.hpp` will never link `CasicParser.cpp` or
 
 ---
 
-## UbsSeries
+## UbxSeries
 
 `UbxSeries` is passed to the `UbxGNSS` constructor to declare the
 hardware generation.  The library uses this to select the correct
